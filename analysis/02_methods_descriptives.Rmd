@@ -6,14 +6,161 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+
+library(tidyverse)
+library(janitor)
+library(rlang)
+library(scales)# for percent formatting
+library(here) # robust paths within the repo
 ```
 
-## R Markdown
+```{r}
+path_in <- here("data", "ica_methods.csv")
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+raw <- readr::read_csv(
+file = path_in,
+col_types = readr::cols(.default = readr::col_character()),
+na = c("", "NA", "N/A", "na", "n/a", "null", "NULL")
+)
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+dat <- raw %>% clean_names()
+
+glimpse(dat) #sanity check
+```
+
+```{r}
+
+binary_cols <- c(
+  "matrix",
+  "short_scales",
+  "scale_search",
+  "prisma_a",
+  "prisma",
+  "inclusion_criteria_applicable",
+  "inclusion_binary",
+  "clinical_relevance",
+  "language_mentioned",
+  "availability_mentioned",
+  "release_date_mentioned",
+  "frequency",
+  "min_scale_citation",
+  "exclusion_criteria",
+  "within_scale_item_collapse",
+  "compound_items",
+  "idiosyncratic_items",
+  "reverse_worded_items",
+  "coding_team_reported",
+  "blinded",
+  "codebook",
+  "software_mentioned",
+  "item_exclusions",
+  "irr_reported",
+  "preregistered_rules",
+  "coding_scheme_independent_mentioned",
+  "mean_overlap",
+  "min_overlap",
+  "max_overlap",
+  "length_correlation_noted"
+)
+
+# Select only the binary columns (keep a copy of IDs)
+dat_binary_raw <- dat %>%
+  select(study_id, any_of(binary_cols))
+``` 
+
+```{r}
+to_logical_strict <- function(x, colname) {
+  # Leave logical as-is
+  if (is.logical(x)) return(x)
+
+  x0 <- as.character(x)
+  x1 <- tolower(trimws(x0))
+
+  true_vals  <- c("true", "t", "yes", "y", "1")
+  false_vals <- c("false", "f", "no", "n", "0")
+
+  out <- dplyr::case_when(
+    is.na(x1) ~ NA,
+    x1 %in% true_vals  ~ TRUE,
+    x1 %in% false_vals ~ FALSE,
+    TRUE ~ NA
+  )
+
+  # Catch typos: any non-NA value not in the allowed encodings
+  bad <- which(!is.na(x1) & !(x1 %in% c(true_vals, false_vals)))
+  if (length(bad) > 0) {
+    bad_vals <- sort(unique(x0[bad]))
+    rlang::abort(paste0(
+      "Non-boolean value(s) detected in column '", colname, "': ",
+      paste(bad_vals, collapse = ", "),
+      ". Example row indices: ", paste(head(bad, 10), collapse = ", ")
+    ))
+  }
+
+  out
+}
+
+dat_binary <- dat_binary_raw %>%
+  mutate(across(all_of(binary_cols), ~ to_logical_strict(.x, cur_column())))
+
+```
+
+```{r}
+binary_counts <- dat_binary %>%
+  pivot_longer(  #long table with one row per (paper × variable)
+    cols = all_of(binary_cols),
+    names_to = "variable",
+    values_to = "value"
+  ) %>%
+  mutate(value = case_when( #converts logicals into `"TRUE"/"FALSE"/"NA"` labels
+    is.na(value) ~ "NA",
+    value ~ "TRUE",
+    !value ~ "FALSE"
+  )) %>%
+  count(variable, value, name = "n") %>%  #counts how many of each label occurs per variable
+  group_by(variable) %>%
+  mutate(n_total = sum(n)) %>% #computes the total number of observations per variable while still in long format
+  ungroup() %>%
+  pivot_wider(  #spreads the counts into columns 'TRUE', 'FALSE' and 'NA' and keeps the n_total
+    names_from = value,
+    values_from = n,
+    values_fill = 0
+  ) %>%
+  arrange(desc(TRUE))
+
+binary_counts
+```
+
+```{r}
+binary_overall <- dat_binary %>%
+  summarise(
+    across(
+      all_of(binary_cols),
+      list(
+        n_true  = ~ sum(.x %in% TRUE, na.rm = TRUE),
+        n_false = ~ sum(.x %in% FALSE, na.rm = TRUE),
+        n_na    = ~ sum(is.na(.x)),
+        n_coded = ~ sum(!is.na(.x))
+      ),
+      .names = "{.col}__{.fn}"
+    )
+  ) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = c("variable", ".value"),
+    names_sep = "__"
+  ) %>%
+  mutate(
+    prop_true = n_true / n_coded,
+    percent_true = scales::percent(prop_true, accuracy = 0.1),
+    report = paste0(n_true, "/", n_coded, " (", percent_true, ")")
+  ) %>%
+  arrange(desc(prop_true))
+
+binary_overall %>% select(variable, n_true, n_coded, n_na, report)
+
+```
 
 ```{r cars}
 summary(cars)
