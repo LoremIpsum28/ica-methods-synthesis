@@ -18,6 +18,8 @@ library(here) # robust paths within the repo
 ```{r}
 path_in <- here("data", "ica_methods.csv")
 
+dir.create(here("outputs"), showWarnings = FALSE)
+
 raw <- readr::read_csv(
 file = path_in,
 col_types = readr::cols(.default = readr::col_character()),
@@ -134,9 +136,89 @@ binary_counts
 
 ```{r}
 binary_overall <- dat_binary %>%
-  summarise(
+  summarise(  #computes per-column counts
     across(
       all_of(binary_cols),
+      list(
+        n_true  = ~ sum(.x %in% TRUE, na.rm = TRUE),
+        n_false = ~ sum(.x %in% FALSE, na.rm = TRUE),
+        n_na    = ~ sum(is.na(.x)),
+        n_coded = ~ sum(!is.na(.x))
+      ),
+      .names = "{.col}__{.fn}"  #attempt to give systematic names like "irr_reported_n_true"
+    )
+  ) %>%
+  pivot_longer(  #splits the names into 'variable" (the original column name) and '.value' (which statistic the number belongs to)
+    cols = everything(),
+    names_to = c("variable", ".value"),
+    names_sep = "__"
+  ) %>%
+  mutate(
+    prop_true = n_true / n_coded,  #proportion TRUE among all coded cases only
+    percent_true = scales::percent(prop_true, accuracy = 0.1),
+    report = paste0(n_true, "/", n_coded, " (", percent_true, ")")  #manuscript-friendly string
+  ) %>%
+  arrange(desc(prop_true))
+
+binary_overall %>% select(variable, n_true, n_coded, n_na, report)
+
+readr::write_csv(binary_overall, here("outputs", "binary_overall.csv"))
+
+```
+
+# Step 4: Conditional reporting rates for gated variables
+There are a couple of key "gates" in the binary dataset: 
+1. `prisma` only matters when `prisma_a == TRUE`
+2. “selection criteria” only matter when `scale_search == TRUE`
+
+This is done as: **filter to applicable subset → summarise the target variables**
+
+## Step 4a: PRISMA reporting among applicable studies (`prisma_a == TRUE`)
+### Why this step?
+It enables to report a conditional statement and avoids penalising studies where PRISMA is structurally not applicable:
+
+> “Among studies that conducted their own scale search (PRISMA applicable), X% reported a PRISMA-style flow diagram.”
+
+```{r}
+prisma_cond <- dat_binary %>%
+  filter(prisma_a == TRUE) %>%
+  summarise(
+    n_applicable = n(),
+    n_true  = sum(prisma %in% TRUE, na.rm = TRUE),
+    n_false = sum(prisma %in% FALSE, na.rm = TRUE),
+    n_na    = sum(is.na(prisma)),
+    n_coded = sum(!is.na(prisma))
+  ) %>%
+  mutate(
+    prop_true = n_true / n_coded,
+    percent_true = scales::percent(prop_true, accuracy = 0.1),
+    report = paste0(n_true, "/", n_coded, " (", percent_true, ")")
+  )
+
+prisma_cond
+
+```
+
+
+## Step 4b: Selection-criteria reporting among manual searches (`scale_search == TRUE`)
+
+```{r}
+criteria_cols <- c(
+  "inclusion_binary",
+  "clinical_relevance",
+  "language_mentioned",
+  "availability_mentioned",
+  "release_date_mentioned",
+  "frequency",
+  "min_scale_citation",
+  "exclusion_criteria"
+)
+
+criteria_cond <- dat_binary %>%
+  filter(scale_search == TRUE) %>%
+  summarise(
+    across(
+      all_of(criteria_cols),
       list(
         n_true  = ~ sum(.x %in% TRUE, na.rm = TRUE),
         n_false = ~ sum(.x %in% FALSE, na.rm = TRUE),
@@ -154,13 +236,15 @@ binary_overall <- dat_binary %>%
   mutate(
     prop_true = n_true / n_coded,
     percent_true = scales::percent(prop_true, accuracy = 0.1),
-    report = paste0(n_true, "/", n_coded, " (", percent_true, ")")
+    report = paste0(n_true, "/", n_coded, " (", percent_true, ")"),
+    condition = "Among studies with manual scale search (scale_search == TRUE)"
   ) %>%
   arrange(desc(prop_true))
 
-binary_overall %>% select(variable, n_true, n_coded, n_na, report)
+criteria_cond %>% select(condition, variable, n_true, n_coded, n_na, report)
 
 ```
+
 
 ```{r cars}
 summary(cars)
