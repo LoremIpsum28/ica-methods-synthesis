@@ -245,6 +245,116 @@ criteria_cond %>% select(condition, variable, n_true, n_coded, n_na, report)
 
 ```
 
+```{r}
+readr::write_csv(prisma_cond, here("outputs", "prisma_conditional.csv"))
+readr::write_csv(criteria_cond, here("outputs", "criteria_conditional.csv"))
+
+```
+
+#Descriptives for "homogenous" numeric columns
+
+
+```{r}
+# "clean"/homogenous numeric columns 
+numeric_cols_clean <- c(
+  "n_scales",
+  "initial_coding_team_size",
+  "n_rater",
+  "mean_overlap_nr",
+  "min_overlap_nr",
+  "max_overlap_nr"
+)
+
+numeric_cols_clean_present <- intersect(numeric_cols_clean, names(dat))
+
+dat_num <- dat %>%
+  mutate(across(all_of(numeric_cols_clean_present), readr::parse_number))
+
+# NA rates after parsing (quick QA)
+numeric_na_rates <- dat_num %>%
+  summarise(across(all_of(numeric_cols_clean_present),
+                   ~ mean(is.na(.x)))) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "prop_na") %>%
+  mutate(percent_na = scales::percent(prop_na, accuracy = 0.1)) %>%
+  arrange(desc(prop_na))
+
+numeric_na_rates
+
+``` 
+
+```{r}
+summarise_numeric <- function(x) {
+  x <- x[!is.na(x)]
+  if (length(x) == 0) {
+    return(tibble(
+      n = 0, mean = NA_real_, sd = NA_real_, median = NA_real_, iqr = NA_real_,
+      min = NA_real_, max = NA_real_, q25 = NA_real_, q75 = NA_real_,
+      n_outliers_iqr = NA_integer_
+    ))
+  }
+
+  q <- quantile(x, probs = c(.25, .75), names = FALSE)
+  iqr_val <- q[2] - q[1]
+  lower <- q[1] - 1.5 * iqr_val
+  upper <- q[2] + 1.5 * iqr_val
+  n_out <- sum(x < lower | x > upper)
+
+  tibble(
+    n = length(x),
+    mean = mean(x),
+    sd = sd(x),
+    median = median(x),
+    iqr = IQR(x),
+    min = min(x),
+    max = max(x),
+    q25 = q[1],
+    q75 = q[2],
+    n_outliers_iqr = n_out
+  )
+}
+
+numeric_overall <- dat_num %>%
+  summarise(across(all_of(numeric_cols_clean_present), summarise_numeric)) %>%
+  pivot_longer(everything(), names_to = "variable", values_to = "stats") %>%
+  unnest_wider(stats)
+
+numeric_overall
+
+```
+
+
+#Conditional descriptives for overlap values (only where Jaccard values are reported)
+```{r}
+overlap_pairs <- tribble(
+  ~flag, ~value,
+  "mean_overlap", "mean_overlap_nr",
+  "min_overlap",  "min_overlap_nr",
+  "max_overlap",  "max_overlap_nr"
+) %>%
+  filter(flag %in% names(dat_num), value %in% names(dat_num))
+
+overlap_conditional <- overlap_pairs %>%
+  pmap_dfr(function(flag, value) {
+
+    # 1) subset to rows where the metric is reported/applicable
+    df_sub <- dat_num %>% filter(.data[[flag]] == TRUE)
+
+    # 2) pull the numeric vector from the relevant *_nr column
+    x <- df_sub %>% pull(.data[[value]])
+
+    # 3) compute descriptives on the numeric vector
+    summarise_numeric(x) %>%
+      mutate(
+        flag = flag,
+        value = value,
+        n_applicable = nrow(df_sub)  # how many rows satisfied flag == TRUE
+      ) %>%
+      relocate(flag, value, n_applicable)
+  })
+
+overlap_conditional
+
+```
 
 ```{r cars}
 summary(cars)
