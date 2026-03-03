@@ -322,6 +322,12 @@ numeric_overall
 
 ```
 
+```{r}
+readr::write_csv(numeric_overall, here("outputs", "numeric_overall.csv"))
+
+
+```
+
 
 #Conditional descriptives for overlap values (only where Jaccard values are reported)
 ```{r}
