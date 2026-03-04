@@ -13,6 +13,7 @@ library(janitor)
 library(rlang)
 library(scales)# for percent formatting
 library(here) # robust paths within the repo
+library(stringr)
 ```
 
 ```{r}
@@ -48,6 +49,7 @@ binary_cols <- c(
   "frequency",
   "min_scale_citation",
   "exclusion_criteria",
+  "multiple_analyses",
   "within_scale_item_collapse",
   "compound_items",
   "idiosyncratic_items",
@@ -66,7 +68,7 @@ binary_cols <- c(
   "length_correlation_noted"
 )
 
-# Select only the binary columns (keep a copy of IDs)
+# Select only binary columns
 dat_binary_raw <- dat %>%
   select(study_id, any_of(binary_cols))
 ``` 
@@ -89,7 +91,7 @@ to_logical_strict <- function(x, colname) {
     TRUE ~ NA
   )
 
-  # Catch typos: any non-NA value not in the allowed encodings
+  # In case of typos: any non-NA value not in the allowed encodings
   bad <- which(!is.na(x1) & !(x1 %in% c(true_vals, false_vals)))
   if (length(bad) > 0) {
     bad_vals <- sort(unique(x0[bad]))
@@ -251,8 +253,7 @@ readr::write_csv(criteria_cond, here("outputs", "criteria_conditional.csv"))
 
 ```
 
-#Descriptives for "homogenous" numeric columns
-
+#Step 5: Descriptives for "homogenous" numeric columns
 
 ```{r}
 # "clean"/homogenous numeric columns 
@@ -325,11 +326,10 @@ numeric_overall
 ```{r}
 readr::write_csv(numeric_overall, here("outputs", "numeric_overall.csv"))
 
-
 ```
 
 
-#Conditional descriptives for overlap values (only where Jaccard values are reported)
+#Step 6: Conditional descriptives for overlap values (only where Jaccard values are reported)
 ```{r}
 overlap_pairs <- tribble(
   ~flag, ~value,
@@ -362,16 +362,390 @@ overlap_conditional
 
 ```
 
-```{r cars}
-summary(cars)
+#Step 7: Percentage reduction from total items to overlap categories
+From the 37 papers, only one author (Black et al., 2023) reported the percentage reduction from the total items of all scales to the symptom categories they ended up doing the content overlap with. So we calculated the percentage reduction for the remaining papers (wherever possible).
+##Step 7a: Summary of overall percentage_reduction
+```{r}
+dat <- dat %>%
+  mutate(percentage_reduction = as.numeric(percentage_reduction))
+
+# 1) Overall summary of percentage_reduction
+reduction_summary <- dat %>%
+  summarise(
+    n_total = n(),
+    n_coded = sum(!is.na(percentage_reduction)),
+    mean = mean(percentage_reduction, na.rm = TRUE),
+    sd = sd(percentage_reduction, na.rm = TRUE),
+    median = median(percentage_reduction, na.rm = TRUE),
+    q25 = quantile(percentage_reduction, 0.25, na.rm = TRUE),
+    q75 = quantile(percentage_reduction, 0.75, na.rm = TRUE),
+    iqr = IQR(percentage_reduction, na.rm = TRUE),
+    min = min(percentage_reduction, na.rm = TRUE),
+    max = max(percentage_reduction, na.rm = TRUE)
+  )
+
+reduction_summary
+
 ```
 
-## Including Plots
+##Step 7b: Comparison between approaches
+There were two main approaches to categorizing the items; on the symptom_level vs. on the category/domain_level
+```{r}
 
-You can also embed plots, for example:
+# - has_symptom: item_unit contains "symptom_level"
+# - has_category: item_unit contains "category_level"
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+dat_units <- dat %>%
+  mutate(
+    item_unit_clean = item_unit %>%
+      str_to_lower() %>%
+      str_replace_all(",", ";") %>%      # guard against stray commas
+      str_squish(),
+    has_symptom  = str_detect(item_unit_clean, "\\bsymptom_level\\b"),
+    has_category = str_detect(item_unit_clean, "\\bcategory_level\\b")
+  )
+
+symptom_stats <- dat_units %>%
+  filter(has_symptom, !is.na(percentage_reduction)) %>%
+  summarise(
+    n = n(),
+    mean = mean(percentage_reduction),
+    median = median(percentage_reduction),
+    q25 = quantile(percentage_reduction, 0.25),
+    q75 = quantile(percentage_reduction, 0.75)
+  ) %>%
+  mutate(group = "symptom_level")
+
+category_stats <- dat_units %>%
+  filter(has_category, !is.na(percentage_reduction)) %>%
+  summarise(
+    n = n(),
+    mean = mean(percentage_reduction),
+    median = median(percentage_reduction),
+    q25 = quantile(percentage_reduction, 0.25),
+    q75 = quantile(percentage_reduction, 0.75)
+  ) %>%
+  mutate(group = "category_level")
+
+unit_comparison <- bind_rows(symptom_stats, category_stats) %>%
+  select(group, everything())
+
+unit_comparison
+
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+## Step 7c: Descriptives for remaining item_unit levels 
+```{r}
+# Ensures consistent token formatting
+dat_units2 <- dat %>%
+  mutate(
+    item_unit_clean = item_unit %>%
+      str_to_lower() %>%
+      str_replace_all(",", ";") %>%
+      str_squish()
+  )
+
+
+# Descriptives for the remaining levels: semantic_level, criterion_level, item_level reductions 
+
+other_tokens <- c("semantic_level", "criterion_level", "item_level")
+
+reduction_other_levels <- dat_units2 %>%
+  select(study_id, item_unit_clean, percentage_reduction) %>%
+  separate_rows(item_unit_clean, sep = ";\\s*") %>%
+  mutate(item_unit_clean = str_squish(item_unit_clean)) %>%
+  filter(item_unit_clean %in% other_tokens) %>%
+  group_by(item_unit_clean) %>%
+  summarise(
+    n_total = n(),
+    n_coded = sum(!is.na(percentage_reduction)),
+    mean = mean(percentage_reduction, na.rm = TRUE),
+    sd = sd(percentage_reduction, na.rm = TRUE),
+    median = median(percentage_reduction, na.rm = TRUE),
+    q25 = quantile(percentage_reduction, 0.25, na.rm = TRUE),
+    q75 = quantile(percentage_reduction, 0.75, na.rm = TRUE),
+    min = min(percentage_reduction, na.rm = TRUE),
+    max = max(percentage_reduction, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(item_unit_clean)
+
+reduction_other_levels
+
+```
+
+```{r}
+tab_overarching_domain <- dat %>%
+  select(overarching_domain) %>%
+  count(overarching_domain, name = "n") %>%
+  mutate(percent = scales::percent(n / sum(n), 0.1)) %>%
+  arrange(desc(n))
+
+tab_overarching_domain
+
+```
+
+```{r}
+tab_compound_items_codes <- dat %>%
+  select(compound_items_codes) %>%
+  count(compound_items_codes, name = "n") %>%
+  mutate(percent = scales::percent(n / sum(n), accuracy = 0.1)) %>%
+  arrange(desc(n))
+
+tab_compound_items_codes
+
+```
+
+```{r}
+tab_categorization_approach <- dat %>%
+  select(categorization_approach) %>%
+  count(categorization_approach, name = "n") %>%
+  mutate(percent = scales::percent(n / sum(n), accuracy = 0.1)) %>%
+  arrange(desc(n))
+
+tab_categorization_approach
+
+```
+
+```{r}
+# ============================================================
+# ORGANIZED WORKFLOW FOR FACTORS + TAG COLUMNS (TIDYVERSE)
+# ============================================================
+# Goal:
+# 1) Standardize selected string columns once (optional but recommended).
+# 2) Use small helper functions to generate:
+#    - frequency tables for factor-like columns (single value per row)
+#    - token prevalence tables for tag columns (semicolon-separated values)
+#    - token breadth summaries (how many tokens per study/row)
+#
+# Assumptions:
+# - Your dataset is called `dat`
+# - `study_id` uniquely identifies each row (or at least each unit you want to count)
+# - Tag columns use ";" as delimiter (e.g., "pubmed; psycinfo")
+# - You want tables for supplementary materials (simple counts + percents)
+# ============================================================
+
+
+
+# ------------------------------------------------------------
+# 0) OPTIONAL: Standardize only the columns you will analyze
+# ------------------------------------------------------------
+# Why do this?
+# - It prevents accidental category-splitting due to formatting differences
+#   (e.g., "PubMed" vs "pubmed", or "web of science" vs "web_of_science").
+# If you are 100% sure your sheet is already standardized, you can skip this
+# and just set dat_std <- dat.
+#
+# std_text(): 
+# - Converts to character (in case Excel imported factors)
+# - Lowercases
+# - Trims and collapses whitespace
+#
+# std_tags():
+# - Does std_text()
+# - Normalizes delimiters so that:
+#   - commas become semicolons
+#   - "; " becomes ";"
+#
+std_text <- function(x) {
+  x %>%
+    as.character() %>%
+    str_to_lower() %>%
+    str_squish()
+}
+
+std_tags <- function(x) {
+  x %>%
+    std_text() %>%
+    str_replace_all(",", ";") %>%     # treat commas as tag separators if they occur
+    str_replace_all(";\\s*", ";")     # remove spaces after semicolons
+}
+
+# Choose which columns should be standardized as "single-value factors"
+factor_cols_to_std <- c(
+  "overarching_domain",
+  "administration_mode",
+  "compound_items_codes",
+  "categorization_approach"
+)
+
+# Choose which columns should be standardized as "tag columns"
+tag_cols_to_std <- c(
+  "database",
+  "item_unit",
+  "diagnostic_framework"
+)
+
+# Create a standardized working dataset:
+# - only the specified columns are transformed
+# - all other columns are kept unchanged
+dat_std <- dat %>%
+  mutate(
+    across(any_of(factor_cols_to_std), std_text),
+    across(any_of(tag_cols_to_std), std_tags)
+  )
+
+# ------------------------------------------------------------
+# 1) Helper function: frequency table for factor-like columns
+# ------------------------------------------------------------
+# What it does:
+# - Counts unique values of a column (one value per row)
+# - Adds percent column relative to the total n counted
+#
+# Why it is useful:
+# - You can reuse it across many columns with a single line per column.
+#
+tab_factor <- function(data, col) {
+  data %>%
+    # count() creates a frequency table; `name` sets the count column name
+    count({{ col }}, name = "count") %>%
+    # percent is count divided by total count across categories
+    mutate(percent = scales::percent(count / sum(count), accuracy = 0.1)) %>%
+    # sort descending so most frequent category is on top
+    arrange(desc(count))
+}
+
+# ------------------------------------------------------------
+# 2) Helper function: tokenize + count tag prevalence
+# ------------------------------------------------------------
+# This is for columns like:
+# - database = "pubmed;psycinfo;google_scholar"
+#
+# What it does:
+# - Splits tag strings into one row per (study_id, tag)
+# - Removes "NA"/"indeterminable"/empty tokens (configurable)
+# - Counts in how many distinct studies each tag appears
+# - Adds percent relative to total number of studies/rows
+#
+tab_tags_usage <- function(data, id_col, tags_col,
+                           drop_vals = c("na", "indeterminable", "")) {
+  data %>%
+    # keep only the ID + the tag column to keep the pipeline clear
+    select({{ id_col }}, {{ tags_col }}) %>%
+    # separate_rows turns "a;b;c" into three rows (a), (b), (c) for the same ID
+    separate_rows({{ tags_col }}, sep = ";") %>%
+    # tidy tag tokens (e.g., remove accidental spaces)
+    mutate({{ tags_col }} := str_trim({{ tags_col }})) %>%
+    # drop missing or placeholder tokens
+    filter(!is.na({{ tags_col }}), !({{ tags_col }} %in% drop_vals)) %>%
+    # ensure each (ID, tag) pair is counted once even if duplicated
+    distinct({{ id_col }}, {{ tags_col }}) %>%
+    # count how many IDs used each tag
+    count({{ tags_col }}, name = "n_papers") %>%
+    # percent relative to the total number of distinct IDs in the dataset
+    mutate(percent = scales::percent(n_papers / n_distinct(data %>% pull({{ id_col }})),
+                                     accuracy = 0.1)) %>%
+    arrange(desc(n_papers))
+}
+
+# ------------------------------------------------------------
+# 3) Helper function: tag breadth (how many tags per study)
+# ------------------------------------------------------------
+# Useful questions it answers:
+# - How many databases did papers use on average?
+# - How many papers used only 1 database?
+# - Distribution of number of tags per paper
+#
+tab_tags_breadth <- function(data, id_col, tags_col,
+                             drop_vals = c("na", "indeterminable", "")) {
+  data %>%
+    select({{ id_col }}, {{ tags_col }}) %>%
+    separate_rows({{ tags_col }}, sep = ";") %>%
+    mutate({{ tags_col }} := str_trim({{ tags_col }})) %>%
+    filter(!is.na({{ tags_col }}), !({{ tags_col }} %in% drop_vals)) %>%
+    distinct({{ id_col }}, {{ tags_col }}) %>%
+    count({{ id_col }}, name = "n_tags")
+}
+
+# ============================================================
+# EXAMPLES (these are the lines you actually run per column)
+# ============================================================
+
+# ------------------------------------------------------------
+# A) Factor-like columns (one value per row)
+# ------------------------------------------------------------
+tab_overarching_domain <- tab_factor(dat_std, overarching_domain)
+tab_administration_mode <- tab_factor(dat_std, administration_mode)
+tab_compound_items_codes <- tab_factor(dat_std, compound_items_codes)
+tab_categorization_approach <- tab_factor(dat_std, categorization_approach)
+
+tab_overarching_domain
+tab_administration_mode
+tab_compound_items_codes
+tab_categorization_approach
+
+
+# ------------------------------------------------------------
+# B) Tag columns: DATABASE
+# ------------------------------------------------------------
+# 1) Which databases were used most often?
+db_usage <- tab_tags_usage(dat_std, study_id, database)
+
+# 2) How many databases per paper?
+db_breadth <- tab_tags_breadth(dat_std, study_id, database)
+
+# 3) Summaries for breadth
+db_breadth_summary <- db_breadth %>%
+  summarise(
+    n_coded = n(),                 # how many studies had at least one database token
+    mean = mean(n_tags),
+    median = median(n_tags),
+    min = min(n_tags),
+    max = max(n_tags),
+    n_single_db = sum(n_tags == 1) # how many used exactly 1 database
+  )
+
+db_usage
+db_breadth_summary
+
+# Distribution of number of databases (1,2,3,...)
+db_breadth_dist <- db_breadth %>%
+  count(n_tags, name = "n_papers") %>%
+  mutate(percent = scales::percent(n_papers / sum(n_papers), accuracy = 0.1)) %>%
+  arrange(n_tags)
+
+db_breadth_dist
+
+
+# ------------------------------------------------------------
+# C) Tag columns: ITEM UNIT
+# ------------------------------------------------------------
+item_unit_usage <- tab_tags_usage(dat_std, study_id, item_unit)
+item_unit_breadth <- tab_tags_breadth(dat_std, study_id, item_unit)
+
+item_unit_usage
+
+# how many papers have >1 unit token (proxy for "multiple analyses/units")
+item_unit_multi <- item_unit_breadth %>%
+  summarise(
+    n_total = n(),
+    n_multi = sum(n_tags > 1),
+    percent_multi = scales::percent(n_multi / n_total, accuracy = 0.1)
+  )
+
+item_unit_multi
+
+
+# ------------------------------------------------------------
+# D) Tag columns: DIAGNOSTIC FRAMEWORK
+# ------------------------------------------------------------
+diag_fw_usage <- tab_tags_usage(dat_std, study_id, diagnostic_framework)
+diag_fw_breadth <- tab_tags_breadth(dat_std, study_id, diagnostic_framework)
+
+diag_fw_usage
+
+diag_fw_breadth %>%
+  summarise(
+    n_coded = n(),
+    mean = mean(n_tags),
+    median = median(n_tags),
+    min = min(n_tags),
+    max = max(n_tags)
+  )
+
+```
+
+```{r}
+
+
+```
