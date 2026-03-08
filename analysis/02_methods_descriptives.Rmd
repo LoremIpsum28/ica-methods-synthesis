@@ -507,35 +507,14 @@ tab_categorization_approach
 
 ```
 
+ORGANIZED WORKFLOW FOR FACTORS + TAG COLUMNS
 ```{r}
-# ============================================================
-# ORGANIZED WORKFLOW FOR FACTORS + TAG COLUMNS (TIDYVERSE)
-# ============================================================
-# Goal:
-# 1) Standardize selected string columns once (optional but recommended).
+# 1) Standardize selected string columns once
 # 2) Use small helper functions to generate:
 #    - frequency tables for factor-like columns (single value per row)
 #    - token prevalence tables for tag columns (semicolon-separated values)
-#    - token breadth summaries (how many tokens per study/row)
-#
-# Assumptions:
-# - Your dataset is called `dat`
-# - `study_id` uniquely identifies each row (or at least each unit you want to count)
-# - Tag columns use ";" as delimiter (e.g., "pubmed; psycinfo")
-# - You want tables for supplementary materials (simple counts + percents)
-# ============================================================
+#    - token width -> how many tokens per study/row
 
-
-
-# ------------------------------------------------------------
-# 0) OPTIONAL: Standardize only the columns you will analyze
-# ------------------------------------------------------------
-# Why do this?
-# - It prevents accidental category-splitting due to formatting differences
-#   (e.g., "PubMed" vs "pubmed", or "web of science" vs "web_of_science").
-# If you are 100% sure your sheet is already standardized, you can skip this
-# and just set dat_std <- dat.
-#
 # std_text(): 
 # - Converts to character (in case Excel imported factors)
 # - Lowercases
@@ -546,7 +525,7 @@ tab_categorization_approach
 # - Normalizes delimiters so that:
 #   - commas become semicolons
 #   - "; " becomes ";"
-#
+
 std_text <- function(x) {
   x %>%
     as.character() %>%
@@ -561,87 +540,74 @@ std_tags <- function(x) {
     str_replace_all(";\\s*", ";")     # remove spaces after semicolons
 }
 
-# Choose which columns should be standardized as "single-value factors"
+# one vector to put all "single-value factor"- columns in
 factor_cols_to_std <- c(
+  "population",
   "overarching_domain",
   "administration_mode",
   "compound_items_codes",
-  "categorization_approach"
+  "categorization_approach",
+  "software_used",
+  "matrix_source"
 )
 
-# Choose which columns should be standardized as "tag columns"
+# Selects all columns to be standardized as "tag columns"
 tag_cols_to_std <- c(
   "database",
   "item_unit",
   "diagnostic_framework"
 )
 
-# Create a standardized working dataset:
-# - only the specified columns are transformed
-# - all other columns are kept unchanged
+# Create a standardized working dataset without accidental commas or whitespaces
+
 dat_std <- dat %>%
   mutate(
     across(any_of(factor_cols_to_std), std_text),
     across(any_of(tag_cols_to_std), std_tags)
   )
 
-# ------------------------------------------------------------
-# 1) Helper function: frequency table for factor-like columns
-# ------------------------------------------------------------
-# What it does:
+```
+
+# Helper functions: frequency table for factor-like columns
+```{r}
+# 1) Function for frequency table for factor-like columns
+
 # - Counts unique values of a column (one value per row)
 # - Adds percent column relative to the total n counted
-#
-# Why it is useful:
-# - You can reuse it across many columns with a single line per column.
-#
+
 tab_factor <- function(data, col) {
   data %>%
-    # count() creates a frequency table; `name` sets the count column name
     count({{ col }}, name = "count") %>%
-    # percent is count divided by total count across categories
     mutate(percent = scales::percent(count / sum(count), accuracy = 0.1)) %>%
-    # sort descending so most frequent category is on top
     arrange(desc(count))
 }
 
-# ------------------------------------------------------------
-# 2) Helper function: tokenize + count tag prevalence
-# ------------------------------------------------------------
-# This is for columns like:
+# 2) function for tokenizing  + counting tag prevalence
+
+# for columns like:
 # - database = "pubmed;psycinfo;google_scholar"
-#
-# What it does:
+
 # - Splits tag strings into one row per (study_id, tag)
-# - Removes "NA"/"indeterminable"/empty tokens (configurable)
+# - Removes "NA"/"indeterminable"/empty tokens
 # - Counts in how many distinct studies each tag appears
 # - Adds percent relative to total number of studies/rows
-#
+
 tab_tags_usage <- function(data, id_col, tags_col,
                            drop_vals = c("na", "indeterminable", "")) {
   data %>%
-    # keep only the ID + the tag column to keep the pipeline clear
     select({{ id_col }}, {{ tags_col }}) %>%
-    # separate_rows turns "a;b;c" into three rows (a), (b), (c) for the same ID
     separate_rows({{ tags_col }}, sep = ";") %>%
-    # tidy tag tokens (e.g., remove accidental spaces)
     mutate({{ tags_col }} := str_trim({{ tags_col }})) %>%
-    # drop missing or placeholder tokens
     filter(!is.na({{ tags_col }}), !({{ tags_col }} %in% drop_vals)) %>%
-    # ensure each (ID, tag) pair is counted once even if duplicated
-    distinct({{ id_col }}, {{ tags_col }}) %>%
-    # count how many IDs used each tag
     count({{ tags_col }}, name = "n_papers") %>%
-    # percent relative to the total number of distinct IDs in the dataset
     mutate(percent = scales::percent(n_papers / n_distinct(data %>% pull({{ id_col }})),
                                      accuracy = 0.1)) %>%
     arrange(desc(n_papers))
 }
 
-# ------------------------------------------------------------
-# 3) Helper function: tag breadth (how many tags per study)
-# ------------------------------------------------------------
-# Useful questions it answers:
+
+# 3) function: how many tags per study
+
 # - How many databases did papers use on average?
 # - How many papers used only 1 database?
 # - Distribution of number of tags per paper
@@ -657,27 +623,31 @@ tab_tags_breadth <- function(data, id_col, tags_col,
     count({{ id_col }}, name = "n_tags")
 }
 
-# ============================================================
-# EXAMPLES (these are the lines you actually run per column)
-# ============================================================
+```
 
-# ------------------------------------------------------------
+
+```{r}
 # A) Factor-like columns (one value per row)
-# ------------------------------------------------------------
+
+tab_population <- tab_factor(dat_std, population)
 tab_overarching_domain <- tab_factor(dat_std, overarching_domain)
 tab_administration_mode <- tab_factor(dat_std, administration_mode)
 tab_compound_items_codes <- tab_factor(dat_std, compound_items_codes)
 tab_categorization_approach <- tab_factor(dat_std, categorization_approach)
+tab_software_used <- tab_factor(dat_std, software_used)
+tab_matrix_source <- tab_factor(dat_std, matrix_source)
 
+
+tab_population
 tab_overarching_domain
 tab_administration_mode
 tab_compound_items_codes
 tab_categorization_approach
+tab_software_used
+tab_matrix_source
 
-
-# ------------------------------------------------------------
 # B) Tag columns: DATABASE
-# ------------------------------------------------------------
+
 # 1) Which databases were used most often?
 db_usage <- tab_tags_usage(dat_std, study_id, database)
 
@@ -707,9 +677,9 @@ db_breadth_dist <- db_breadth %>%
 db_breadth_dist
 
 
-# ------------------------------------------------------------
+
 # C) Tag columns: ITEM UNIT
-# ------------------------------------------------------------
+
 item_unit_usage <- tab_tags_usage(dat_std, study_id, item_unit)
 item_unit_breadth <- tab_tags_breadth(dat_std, study_id, item_unit)
 
@@ -726,9 +696,8 @@ item_unit_multi <- item_unit_breadth %>%
 item_unit_multi
 
 
-# ------------------------------------------------------------
 # D) Tag columns: DIAGNOSTIC FRAMEWORK
-# ------------------------------------------------------------
+
 diag_fw_usage <- tab_tags_usage(dat_std, study_id, diagnostic_framework)
 diag_fw_breadth <- tab_tags_breadth(dat_std, study_id, diagnostic_framework)
 
