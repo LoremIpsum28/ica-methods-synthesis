@@ -177,9 +177,7 @@ This is done as: **filter to applicable subset → summarise the target variable
 
 ## Step 4a: PRISMA reporting among applicable studies (`prisma_a == TRUE`)
 ### Why this step?
-It enables to report a conditional statement and avoids penalising studies where PRISMA is structurally not applicable:
-
-> “Among studies that conducted their own scale search (PRISMA applicable), X% reported a PRISMA-style flow diagram.”
+It enables to report a conditional statement and avoids penalising studies where PRISMA is structurally not applicable
 
 ```{r}
 prisma_cond <- dat_binary %>%
@@ -328,6 +326,49 @@ readr::write_csv(numeric_overall, here("outputs", "numeric_overall.csv"))
 
 ```
 
+```{r}
+n_scales_vec <- dat %>%
+  transmute(n_scales_num = readr::parse_number(as.character(n_scales))) %>%
+  pull(n_scales_num)
+
+### 2) Compute outlier bounds and the mean without outliers (using the vector)
+
+q25 <- quantile(n_scales_vec, 0.25, na.rm = TRUE)
+q75 <- quantile(n_scales_vec, 0.75, na.rm = TRUE)
+iqr_val <- IQR(n_scales_vec, na.rm = TRUE)
+
+lower <- q25 - 1.5 * iqr_val
+upper <- q75 + 1.5 * iqr_val
+
+n_scales_no_out <- n_scales_vec[n_scales_vec >= lower & n_scales_vec <= upper]
+
+tibble(
+  n_total = sum(!is.na(n_scales_vec)),
+  n_kept = length(n_scales_no_out),
+  n_removed = sum(!is.na(n_scales_vec)) - length(n_scales_no_out),
+  mean_no_outliers = mean(n_scales_no_out),
+  sd_no_outliers = sd(n_scales_no_out),
+  median_no_outliers = median(n_scales_no_out),
+  min_no_outliers = min(n_scales_no_out),
+  max_no_outliers = max(n_scales_no_out)
+)
+
+n_scales_no_out
+```
+```{r}
+n_scales_no_out_summary <- tibble(
+  n_total = sum(!is.na(n_scales_vec)),
+  n_kept = length(n_scales_no_out),
+  n_removed = sum(!is.na(n_scales_vec)) - length(n_scales_no_out),
+  mean_no_outliers = mean(n_scales_no_out),
+  sd_no_outliers = sd(n_scales_no_out),
+  median_no_outliers = median(n_scales_no_out),
+  min_no_outliers = min(n_scales_no_out),
+  max_no_outliers = max(n_scales_no_out)
+)
+
+readr::write_csv(n_scales_no_out_summary, here::here("outputs", "n_scales_no_out_summary.csv"))
+```
 
 #Step 6: Conditional descriptives for overlap values (only where Jaccard values are reported)
 ```{r}
@@ -474,38 +515,6 @@ reduction_other_levels
 
 ```
 
-```{r}
-tab_overarching_domain <- dat %>%
-  select(overarching_domain) %>%
-  count(overarching_domain, name = "n") %>%
-  mutate(percent = scales::percent(n / sum(n), 0.1)) %>%
-  arrange(desc(n))
-
-tab_overarching_domain
-
-```
-
-```{r}
-tab_compound_items_codes <- dat %>%
-  select(compound_items_codes) %>%
-  count(compound_items_codes, name = "n") %>%
-  mutate(percent = scales::percent(n / sum(n), accuracy = 0.1)) %>%
-  arrange(desc(n))
-
-tab_compound_items_codes
-
-```
-
-```{r}
-tab_categorization_approach <- dat %>%
-  select(categorization_approach) %>%
-  count(categorization_approach, name = "n") %>%
-  mutate(percent = scales::percent(n / sum(n), accuracy = 0.1)) %>%
-  arrange(desc(n))
-
-tab_categorization_approach
-
-```
 
 ORGANIZED WORKFLOW FOR FACTORS + TAG COLUMNS
 ```{r}
@@ -711,6 +720,14 @@ diag_fw_breadth %>%
     min = min(n_tags),
     max = max(n_tags)
   )
+
+```
+```{r}
+readr::write_csv(tab_population, here("outputs", "tab_population.csv"))
+
+readr::write_csv(tab_overarching_domain, here("outputs", "tab_overarching_domain.csv"))
+
+readr::write_csv(tab_administration_mode, here("outputs", "tab_administration_mode.csv"))
 
 ```
 
