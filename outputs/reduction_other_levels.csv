@@ -1,0 +1,4 @@
+item_unit_clean,n_total,n_coded,mean,sd,median,q25,q75,min,max
+criterion_level,2,2,88.3,9.277240969167506,88.3,85.02,91.58,81.74,94.86
+item_level,1,1,0,NA,0,0,0,0,0
+semantic_level,2,2,68.1,44.519442943505034,68.1,52.36,83.84,36.62,99.58

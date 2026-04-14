@@ -1,0 +1,9 @@
+method,n_true,report
+Within-scale item collapsing,16,16/37 (43.2%)
+Reverse-worded items collapsed,7,7/37 (18.9%)
+Item exclusions reported,13,13/37 (35.1%)
+Idiosyncratic/unique items discussed,26,26/37 (70.3%)
+Compound items discussed,24,24/37 (64.9%)
+  ↳ Compound handling: multi-coded,20,20/24 (83.3%)
+  ↳ Compound handling: mono-coded,2,2/24 (8.3%)
+  ↳ Compound handling: other,2,2/24 (8.3%)

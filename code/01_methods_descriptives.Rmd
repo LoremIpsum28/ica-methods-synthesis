@@ -327,48 +327,51 @@ readr::write_csv(numeric_overall, here("outputs", "numeric_overall.csv"))
 ```
 
 ```{r}
-n_scales_vec <- dat %>%
-  transmute(n_scales_num = readr::parse_number(as.character(n_scales))) %>%
-  pull(n_scales_num)
+dat_n_scales_num <- dat %>%
+  mutate(n_scales_num = parse_number(as.character(n_scales)))
 
-### 2) Compute outlier bounds and the mean without outliers (using the vector)
+n_scales_full <- dat_n_scales_num %>%
+  summarise(
+    n = sum(!is.na(n_scales_num)),
+    mean = mean(n_scales_num, na.rm = TRUE),
+    sd = sd(n_scales_num, na.rm = TRUE),
+    median = median(n_scales_num, na.rm = TRUE),
+    q25 = quantile(n_scales_num, 0.25, na.rm = TRUE),
+    q75 = quantile(n_scales_num, 0.75, na.rm = TRUE),
+    iqr = IQR(n_scales_num, na.rm = TRUE),
+    min = min(n_scales_num, na.rm = TRUE),
+    max = max(n_scales_num, na.rm = TRUE)
+  )
 
-q25 <- quantile(n_scales_vec, 0.25, na.rm = TRUE)
-q75 <- quantile(n_scales_vec, 0.75, na.rm = TRUE)
-iqr_val <- IQR(n_scales_vec, na.rm = TRUE)
+n_scales_full
 
-lower <- q25 - 1.5 * iqr_val
-upper <- q75 + 1.5 * iqr_val
+exclude_ids <- c("Newson2020", "Linton2016")
 
-n_scales_no_out <- n_scales_vec[n_scales_vec >= lower & n_scales_vec <= upper]
+n_scales_excluded <- dat_n_scales_num %>%
+  filter(!study_id %in% exclude_ids) %>%
+  summarise(
+    n = sum(!is.na(n_scales_num)),
+    mean = mean(n_scales_num, na.rm = TRUE),
+    sd = sd(n_scales_num, na.rm = TRUE),
+    median = median(n_scales_num, na.rm = TRUE),
+    q25 = quantile(n_scales_num, 0.25, na.rm = TRUE),
+    q75 = quantile(n_scales_num, 0.75, na.rm = TRUE),
+    iqr = IQR(n_scales_num, na.rm = TRUE),
+    min = min(n_scales_num, na.rm = TRUE),
+    max = max(n_scales_num, na.rm = TRUE)
+  )
 
-tibble(
-  n_total = sum(!is.na(n_scales_vec)),
-  n_kept = length(n_scales_no_out),
-  n_removed = sum(!is.na(n_scales_vec)) - length(n_scales_no_out),
-  mean_no_outliers = mean(n_scales_no_out),
-  sd_no_outliers = sd(n_scales_no_out),
-  median_no_outliers = median(n_scales_no_out),
-  min_no_outliers = min(n_scales_no_out),
-  max_no_outliers = max(n_scales_no_out)
-)
 
-n_scales_no_out
+n_scales_excluded
+
 ```
+
 ```{r}
-n_scales_no_out_summary <- tibble(
-  n_total = sum(!is.na(n_scales_vec)),
-  n_kept = length(n_scales_no_out),
-  n_removed = sum(!is.na(n_scales_vec)) - length(n_scales_no_out),
-  mean_no_outliers = mean(n_scales_no_out),
-  sd_no_outliers = sd(n_scales_no_out),
-  median_no_outliers = median(n_scales_no_out),
-  min_no_outliers = min(n_scales_no_out),
-  max_no_outliers = max(n_scales_no_out)
-)
+readr::write_csv(n_scales_full, here("outputs", "n_scales_full.csv"))
 
-readr::write_csv(n_scales_no_out_summary, here::here("outputs", "n_scales_no_out_summary.csv"))
+readr::write_csv(n_scales_excluded, here("outputs", "n_scales_excluded.csv"))
 ```
+
 
 #Step 6: Conditional descriptives for overlap values (only where Jaccard values are reported)
 ```{r}
@@ -602,7 +605,7 @@ tab_factor <- function(data, col) {
 # - Adds percent relative to total number of studies/rows
 
 tab_tags_usage <- function(data, id_col, tags_col,
-                           drop_vals = c("na", "indeterminable", "")) {
+                           drop_vals = c("na", "")) {
   data %>%
     select({{ id_col }}, {{ tags_col }}) %>%
     separate_rows({{ tags_col }}, sep = ";") %>%
@@ -622,7 +625,7 @@ tab_tags_usage <- function(data, id_col, tags_col,
 # - Distribution of number of tags per paper
 #
 tab_tags_breadth <- function(data, id_col, tags_col,
-                             drop_vals = c("na", "indeterminable", "")) {
+                             drop_vals = c("na", "", "indeterminable")) {
   data %>%
     select({{ id_col }}, {{ tags_col }}) %>%
     separate_rows({{ tags_col }}, sep = ";") %>%
@@ -732,6 +735,153 @@ readr::write_csv(tab_administration_mode, here("outputs", "tab_administration_mo
 ```
 
 ```{r}
+install.packages(c("flextable", "officer"))
+library(flextable)
+library(officer)
+library(dplyr)
+
+```
+
+
+```{r}
+
+ft_minimal <- function(df, caption = NULL) {
+  ft <- flextable(df)
+
+  if (!is.null(caption)) ft <- set_caption(ft, caption)
+
+  ft %>%
+    theme_booktabs() %>%                 # minimalist academic look (horizontal rules)
+    autofit() %>%                        # fit columns to content
+    fontsize(size = 10, part = "all") %>%
+    align(align = "left", part = "all") %>%
+    valign(valign = "top", part = "all") %>%
+    padding(padding = 2, part = "all") %>%
+    set_table_properties(width = 1, layout = "autofit")
+}
+
+```
+
+```{r}
+db_usage_out <- db_usage %>%
+  rename(Database = database, `Studies (n)` = n_papers, `Studies (%)` = percent)
+
+db_breadth_dist_out <- db_breadth_dist %>%
+  rename(`# Databases` = n_tags, `Studies (n)` = n_papers, `Studies (%)` = percent)
+
+db_breadth_summary_out <- db_breadth_summary %>%
+  mutate(across(where(is.numeric), ~round(.x, 2)))
 
 
 ```
+
+```{r}
+doc <- read_docx()
+
+doc <- doc %>%
+  body_add_par("Database reporting and search breadth", style = "heading 2") %>%
+  body_add_flextable(ft_minimal(db_breadth_summary_out, "Table X. Summary of database breadth")) %>%
+  body_add_par("", style = "Normal") %>%
+  body_add_flextable(ft_minimal(db_breadth_dist_out, "Table Y. Number of databases reported per study")) %>%
+  body_add_par("", style = "Normal") %>%
+  body_add_flextable(ft_minimal(db_usage_out, "Table Z. Prevalence of reported databases/search sources"))
+
+print(doc, target = here::here("outputs", "tables_database_section.docx"))
+
+```
+
+```{r}
+# We work only among studies that did a scale search
+dat_ss <- dat_binary %>% 
+  filter(scale_search == TRUE)
+
+# Denominator for conditional inclusion-criteria percentages:
+# (how many scale-search studies reported inclusion criteria?)
+n_incl <- dat_ss %>%
+  summarise(n_incl = sum(inclusion_binary == TRUE, na.rm = TRUE)) %>%
+  pull(n_incl)
+
+# ------------------------------------------------------------
+# A) TOP BLOCK: format of selection criteria (denominator = 32)
+# ------------------------------------------------------------
+criteria_combo_block <- dat_ss %>%
+  # keep only the two "format" indicators
+  transmute(inclusion_binary, exclusion_criteria) %>%
+  # (if you ever have NA here and want to keep it, tell me—right now you said n_na=0)
+  filter(!is.na(inclusion_binary), !is.na(exclusion_criteria)) %>%
+  count(inclusion_binary, exclusion_criteria, name = "n_true") %>%
+  mutate(
+    n_coded = sum(n_true),
+    variable = case_when(
+      inclusion_binary == TRUE  & exclusion_criteria == TRUE  ~ "Selection criteria format: both inclusion & exclusion",
+      inclusion_binary == TRUE  & exclusion_criteria == FALSE ~ "Selection criteria format: inclusion only",
+      inclusion_binary == FALSE & exclusion_criteria == TRUE  ~ "Selection criteria format: exclusions only",
+      inclusion_binary == FALSE & exclusion_criteria == FALSE ~ "Selection criteria format: neither inclusion nor exclusion",
+      TRUE ~ "Selection criteria format: other"
+    ),
+    percent = scales::percent(n_true / n_coded, accuracy = 0.1),
+    `Studies (%)` = paste0(n_true, "/", n_coded, " (", percent, ")")
+  ) %>%
+  select(variable, n_true, `Studies (%)`) %>%
+  arrange(desc(n_true))
+
+# ------------------------------------------------------------
+# B) BOTTOM BLOCK: inclusion criteria content (denominator = n_incl = 27)
+# Only consider studies that reported inclusion criteria (inclusion_binary == TRUE)
+# ------------------------------------------------------------
+incl_criteria_cols <- c(
+  "clinical_relevance",
+  "language_mentioned",
+  "availability_mentioned",
+  "release_date_mentioned",
+  "frequency",
+  "min_scale_citation"
+)
+
+criteria_inclusion_block <- dat_ss %>%
+  filter(inclusion_binary == TRUE) %>%
+  summarise(
+    across(
+      all_of(incl_criteria_cols),
+      ~ sum(.x %in% TRUE, na.rm = TRUE),
+      .names = "{.col}"
+    )
+  ) %>%
+  pivot_longer(
+    cols = everything(),
+    names_to = "variable",
+    values_to = "n_true"
+  ) %>%
+  mutate(
+    variable = recode(variable,
+      language_mentioned     = "Inclusion criteria: language",
+      frequency              = "Inclusion criteria: frequency",
+      availability_mentioned = "Inclusion criteria: availability",
+      release_date_mentioned = "Inclusion criteria: release date/recency",
+      clinical_relevance     = "Inclusion criteria: clinical relevance",
+      min_scale_citation     = "Inclusion criteria: minimum citation threshold"
+    ),
+    percent = scales::percent(n_true / n_incl, accuracy = 0.1),
+    `Studies (%)` = paste0(n_true, "/", n_incl, " (", percent, ")")
+  ) %>%
+  select(variable, n_true, `Studies (%)`) %>%
+  arrange(desc(n_true))
+
+
+
+# --- Append as 4th table to the same Word document ---
+doc <- doc %>%
+  body_add_par("", style = "Normal") %>%
+  body_add_flextable(
+    ft_minimal(
+      criteria_table_final,
+      "Table W. Reported scale-selection criteria among studies conducting a scale search (N = 32)"
+    )
+  )
+
+# --- Save/overwrite the same Word file (or choose a new filename) ---
+dir.create(here("outputs"), showWarnings = FALSE)
+
+print(doc, target = here("outputs", "tables_database_section.docx"))
+```
+
