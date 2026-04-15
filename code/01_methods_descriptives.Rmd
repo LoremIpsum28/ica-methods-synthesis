@@ -55,6 +55,7 @@ binary_cols <- c(
   "idiosyncratic_items",
   "reverse_worded_items",
   "coding_team_reported",
+  "rater_expertise_mentioned",
   "blinded",
   "codebook",
   "software_mentioned",
@@ -322,6 +323,17 @@ numeric_overall
 ```
 
 ```{r}
+number_of_raters <- dat %>%
+  mutate(initial_coding_team_size = as.numeric(initial_coding_team_size)) %>%
+  filter(!is.na(initial_coding_team_size)) %>%
+  count(initial_coding_team_size, name = "n") %>%
+  mutate(percent = scales::percent(n / sum(n), accuracy = 0.1)) %>%
+  arrange(initial_coding_team_size)
+
+number_of_raters
+```
+
+```{r}
 readr::write_csv(numeric_overall, here("outputs", "numeric_overall.csv"))
 
 ```
@@ -405,11 +417,194 @@ overlap_conditional <- overlap_pairs %>%
 overlap_conditional
 
 ```
+```{r}
+
+dat_raw <- raw %>% janitor::clean_names()
+# ------------------------------------------------------------
+dat_step7 <- dat_raw %>%
+  mutate(
+    item_unit_raw = item_unit %>%
+      str_to_lower() %>%
+      str_replace_all(",", ";") %>%   # guard against stray commas
+      str_squish(),
+    reduction_raw = as.character(percentage_reduction) %>%
+      str_replace_all(",", ".") %>%   # guard against comma decimals
+      str_squish()
+  )
+
+# ------------------------------------------------------------
+# 7a) Paper-level summary of percentage_reduction
+# Uses FIRST numeric in the cell (works for single values and "a; b" strings)
+# ------------------------------------------------------------
+dat_step7 <- dat_step7 %>%
+  mutate(percentage_reduction_first = parse_number(reduction_raw))
+
+reduction_summary <- dat_step7 %>%
+  summarise(
+    n_total = n(),
+    n_coded = sum(!is.na(percentage_reduction_first)),
+    mean = mean(percentage_reduction_first, na.rm = TRUE),
+    sd = sd(percentage_reduction_first, na.rm = TRUE),
+    median = median(percentage_reduction_first, na.rm = TRUE),
+    q25 = quantile(percentage_reduction_first, 0.25, na.rm = TRUE),
+    q75 = quantile(percentage_reduction_first, 0.75, na.rm = TRUE),
+    iqr = IQR(percentage_reduction_first, na.rm = TRUE),
+    min = min(percentage_reduction_first, na.rm = TRUE),
+    max = max(percentage_reduction_first, na.rm = TRUE)
+  )
+
+reduction_summary
+
+# Optional: trimmed paper-level summary excluding the minimum and maximum (one extreme each)
+extremes <- dat_step7 %>%
+  filter(!is.na(percentage_reduction_first)) %>%
+  summarise(
+    min_val = min(percentage_reduction_first),
+    max_val = max(percentage_reduction_first)
+  )
+
+min_val <- extremes$min_val
+max_val <- extremes$max_val
+
+reduction_summary_trim <- dat_step7 %>%
+  filter(!is.na(percentage_reduction_first)) %>%
+  filter(!(percentage_reduction_first %in% c(min_val, max_val))) %>%
+  summarise(
+    n_coded = n(),
+    mean = mean(percentage_reduction_first),
+    sd = sd(percentage_reduction_first),
+    median = median(percentage_reduction_first),
+    q25 = quantile(percentage_reduction_first, 0.25),
+    q75 = quantile(percentage_reduction_first, 0.75),
+    iqr = IQR(percentage_reduction_first),
+    min = min(percentage_reduction_first),
+    max = max(percentage_reduction_first)
+  )
+
+reduction_summary_trim
+
+# ------------------------------------------------------------
+# 7b) Analysis-level pairing: item_unit token ↔ reduction value
+# Approach:
+# - split item_unit into tokens and index them within each study_id
+# - split reduction_raw into tokens and index them within each study_id
+# - left_join by (study_id, idx)
+# This preserves duplicates like "symptom_level; symptom_level".
+# ------------------------------------------------------------
+
+# Split item_unit into one row per token occurrence
+units_long <- dat_step7 %>%
+  transmute(study_id, item_unit_raw) %>%
+  separate_rows(item_unit_raw, sep = ";\\s*") %>%
+  mutate(item_unit_token = str_trim(item_unit_raw)) %>%
+  filter(!is.na(item_unit_token), item_unit_token != "") %>%
+  group_by(study_id) %>%
+  mutate(idx = row_number()) %>%
+  ungroup() %>%
+  select(study_id, idx, item_unit_token)
+
+# Split reduction into one row per value occurrence
+reds_long <- dat_step7 %>%
+  transmute(study_id, reduction_raw = replace_na(reduction_raw, "")) %>%
+  separate_rows(reduction_raw, sep = ";\\s*") %>%
+  mutate(red_token = str_trim(reduction_raw)) %>%
+  filter(red_token != "") %>%
+  group_by(study_id) %>%
+  mutate(idx = row_number()) %>%
+  ungroup() %>%
+  mutate(percentage_reduction_num = parse_number(red_token)) %>%
+  select(study_id, idx, percentage_reduction_num)
+
+# Pair by (study_id, idx)
+long_paired <- units_long %>%
+  left_join(reds_long, by = c("study_id", "idx"))
+
+# ------------------------------------------------------------
+# 7c) Total analysis counts by unit token (duplicates preserved)
+# ------------------------------------------------------------
+unit_counts_total_analyses <- long_paired %>%
+  count(item_unit_token, name = "n_analyses") %>%
+  mutate(percent = scales::percent(n_analyses / sum(n_analyses), accuracy = 0.1)) %>%
+  arrange(desc(n_analyses))
+
+unit_counts_total_analyses
+
+# ------------------------------------------------------------
+# 7d) How many tokens have an associated numeric reduction value (diagnostic)
+# ------------------------------------------------------------
+unit_counts_with_values <- long_paired %>%
+  group_by(item_unit_token) %>%
+  summarise(
+    n_tokens = n(),
+    n_with_value = sum(!is.na(percentage_reduction_num)),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(n_tokens))
+
+unit_counts_with_values
+
+# ------------------------------------------------------------
+# 7e) Reduction descriptives by unit token (analysis-level; only numeric values)
+# ------------------------------------------------------------
+reduction_by_unit_token <- long_paired %>%
+  filter(!is.na(percentage_reduction_num)) %>%
+  group_by(item_unit_token) %>%
+  summarise(
+    n_analyses = n(),
+    mean = mean(percentage_reduction_num),
+    sd = sd(percentage_reduction_num),
+    median = median(percentage_reduction_num),
+    q25 = quantile(percentage_reduction_num, 0.25),
+    q75 = quantile(percentage_reduction_num, 0.75),
+    min = min(percentage_reduction_num),
+    max = max(percentage_reduction_num),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(n_analyses))
+
+reduction_by_unit_token
+
+
+
+```
+# ------------------------------------------------------------
+# 7f) Boxplot + jitter for symptom_level vs category_level (analysis-level)
+# ------------------------------------------------------------
+```{r}
+plot_dat <- long_paired %>%
+  filter(item_unit_token %in% c("symptom_level", "category_level"),
+         !is.na(percentage_reduction_num))
+
+
+plot_dat <- plot_dat %>%
+  mutate(item_unit_token = factor(item_unit_token, levels = c("symptom_level", "category_level")))
+
+p_reduction_units <- ggplot(plot_dat, aes(x = item_unit_token, y = percentage_reduction_num)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.15, height = 0, alpha = 0.7) +
+  labs(x = NULL, y = "Percentage reduction") +
+  theme_minimal(base_size = 12)
+
+p_reduction_units
+# make sure outputs/ exists
+dir.create(here("outputs"), showWarnings = FALSE)
+
+# export
+plot_path <- here("outputs", "fig_percentage_reduction_by_unit.png")
+
+ggsave(
+  filename = plot_path,
+  plot = p_reduction_units,
+  width = 6.5, height = 4.5, dpi = 300, bg = "white"
+)
+
+```
 
 #Step 7: Percentage reduction from total items to overlap categories
 From the 37 papers, only one author (Black et al., 2023) reported the percentage reduction from the total items of all scales to the symptom categories they ended up doing the content overlap with. So we calculated the percentage reduction for the remaining papers (wherever possible).
 ##Step 7a: Summary of overall percentage_reduction
-```{r}
+
+# has to be changed, take the code from above and the instructions from this chunk here```{r}
 dat <- dat %>%
   mutate(percentage_reduction = as.numeric(percentage_reduction))
 
@@ -434,7 +629,7 @@ reduction_summary
 
 ##Step 7b: Comparison between approaches
 There were two main approaches to categorizing the items; on the symptom_level vs. on the category/domain_level
-```{r}
+#```{r}
 
 # - has_symptom: item_unit contains "symptom_level"
 # - has_category: item_unit contains "category_level"
@@ -476,10 +671,141 @@ unit_comparison <- bind_rows(symptom_stats, category_stats) %>%
 
 unit_comparison
 
+# Identify the two extremes among non-missing values
+extremes <- dat %>%
+  filter(!is.na(percentage_reduction)) %>%
+  summarise(
+    min_val = min(percentage_reduction),
+    max_val = max(percentage_reduction)
+  )
+
+min_val <- extremes$min_val
+max_val <- extremes$max_val
+
+# Create trimmed dataset excluding min and max (one value each)
+dat_trim <- dat %>%
+  filter(!is.na(percentage_reduction)) %>%
+  filter(percentage_reduction != min_val,
+         percentage_reduction != max_val)
+
+# Summary excluding the two extremes
+reduction_summary_trim <- dat_trim %>%
+  summarise(
+    n_coded = n(),
+    mean = mean(percentage_reduction),
+    sd = sd(percentage_reduction),
+    median = median(percentage_reduction),
+    q25 = quantile(percentage_reduction, 0.25),
+    q75 = quantile(percentage_reduction, 0.75),
+    iqr = IQR(percentage_reduction),
+    min = min(percentage_reduction),
+    max = max(percentage_reduction)
+  )
+
+reduction_summary_trim
+
+dat_units <- dat %>%
+  mutate(
+    percentage_reduction = as.numeric(percentage_reduction),
+    item_unit_clean = item_unit %>%
+      str_to_lower() %>%
+      str_replace_all(",", ";") %>%
+      str_squish(),
+    has_symptom  = str_detect(item_unit_clean, "\\bsymptom_level\\b"),
+    has_category = str_detect(item_unit_clean, "\\bcategory_level\\b"),
+    unit_group = case_when(
+      has_symptom & !has_category ~ "symptom_only",
+      has_category & !has_symptom ~ "category_only",
+      has_symptom & has_category  ~ "both_symptom_and_category",
+      TRUE ~ "neither"
+    )
+  )
+
+# Keep only rows with percentage reduction and relevant groups
+dat_unit_comp <- dat_units %>%
+  filter(!is.na(percentage_reduction),
+         unit_group %in% c("symptom_only", "category_only", "both_symptom_and_category"))
+
+# 1) Descriptives by mutually exclusive group
+dat_unit_comp %>%
+  group_by(unit_group) %>%
+  summarise(
+    n = n(),
+    mean = mean(percentage_reduction),
+    sd = sd(percentage_reduction),
+    median = median(percentage_reduction),
+    q25 = quantile(percentage_reduction, 0.25),
+    q75 = quantile(percentage_reduction, 0.75),
+    min = min(percentage_reduction),
+    max = max(percentage_reduction),
+    .groups = "drop"
+  )
+
+# 2) Visualization: boxplot + jitter (simple and readable)
+ggplot(dat_unit_comp, aes(x = unit_group, y = percentage_reduction)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.15, height = 0, alpha = 0.7) +
+  labs(x = NULL, y = "Percentage reduction", title = "Percentage reduction by unit of comparison")
+
+
 ```
 
+
+#```{r}
+# ---- Step 7b (NEW): Analysis-level reduction by item_unit token (handles multiple analyses) ----
+# This expects that for multi-analysis papers:
+# - item_unit has multiple tokens separated by ";"
+# - percentage_reduction has the same number of entries, also separated by ";"
+# Example: item_unit = "symptom_level; category_level"
+#          percentage_reduction = "75.46; 60.68"
+#
+# IMPORTANT: This keeps duplicates (e.g., "symptom_level; symptom_level") as separate analyses.
+
+dat_long_units <- dat %>%
+  mutate(
+    item_unit_clean = item_unit %>%
+      str_to_lower() %>%
+      str_replace_all(",", ";") %>%
+      str_squish(),
+    reduction_clean = as.character(percentage_reduction) %>%
+      str_replace_all(",", ".") %>%   # guard against comma decimals
+      str_squish()
+  ) %>%
+  # Split both columns in parallel so entries stay aligned by position
+  separate_rows(item_unit_clean, reduction_clean, sep = ";\\s*") %>%
+  mutate(
+    item_unit_clean = str_trim(item_unit_clean),
+    percentage_reduction_num = readr::parse_number(reduction_clean)
+  ) %>%
+  filter(item_unit_clean != "", !is.na(percentage_reduction_num))
+
+# Count how many analyses fall into each unit token (duplicates preserved)
+unit_token_counts <- dat_long_units %>%
+  count(item_unit_clean, name = "n_analyses") %>%
+  arrange(desc(n_analyses))
+
+unit_token_counts
+
+# Reduction descriptives by unit token at the analysis level
+reduction_by_unit_token <- dat_long_units %>%
+  group_by(item_unit_clean) %>%
+  summarise(
+    n_analyses = n(),
+    mean = mean(percentage_reduction_num),
+    sd = sd(percentage_reduction_num),
+    median = median(percentage_reduction_num),
+    q25 = quantile(percentage_reduction_num, 0.25),
+    q75 = quantile(percentage_reduction_num, 0.75),
+    min = min(percentage_reduction_num),
+    max = max(percentage_reduction_num),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(n_analyses))
+
+reduction_by_unit_token
+```
 ## Step 7c: Descriptives for remaining item_unit levels 
-```{r}
+#```{r}
 # Ensures consistent token formatting
 dat_units2 <- dat %>%
   mutate(
@@ -735,7 +1061,7 @@ readr::write_csv(tab_administration_mode, here("outputs", "tab_administration_mo
 ```
 
 ```{r}
-install.packages(c("flextable", "officer"))
+
 library(flextable)
 library(officer)
 library(dplyr)
@@ -813,17 +1139,20 @@ criteria_combo_block <- dat_ss %>%
   mutate(
     n_coded = sum(n_true),
     variable = case_when(
-      inclusion_binary == TRUE  & exclusion_criteria == TRUE  ~ "Selection criteria format: both inclusion & exclusion",
-      inclusion_binary == TRUE  & exclusion_criteria == FALSE ~ "Selection criteria format: inclusion only",
-      inclusion_binary == FALSE & exclusion_criteria == TRUE  ~ "Selection criteria format: exclusions only",
-      inclusion_binary == FALSE & exclusion_criteria == FALSE ~ "Selection criteria format: neither inclusion nor exclusion",
+      inclusion_binary == TRUE  & exclusion_criteria == TRUE  ~ "Both inclusion & exclusion",
+      inclusion_binary == TRUE  & exclusion_criteria == FALSE ~ "Inclusion only",
+      inclusion_binary == FALSE & exclusion_criteria == TRUE  ~ "Exclusions only",
+      inclusion_binary == FALSE & exclusion_criteria == FALSE ~ "Neither inclusion nor exclusion",
       TRUE ~ "Selection criteria format: other"
     ),
-    percent = scales::percent(n_true / n_coded, accuracy = 0.1),
-    `Studies (%)` = paste0(n_true, "/", n_coded, " (", percent, ")")
+    Proportion = paste0(n_true, "/", n_coded),
+    Percentage = scales::percent(n_true / n_coded, accuracy = 0.1)
   ) %>%
-  select(variable, n_true, `Studies (%)`) %>%
+  select(variable, n_true, Proportion, Percentage) %>%
+  rename("Selection criteria format" = variable) %>% 
   arrange(desc(n_true))
+
+criteria_combo_block
 
 # ------------------------------------------------------------
 # B) BOTTOM BLOCK: inclusion criteria content (denominator = n_incl = 27)
@@ -854,19 +1183,21 @@ criteria_inclusion_block <- dat_ss %>%
   ) %>%
   mutate(
     variable = recode(variable,
-      language_mentioned     = "Inclusion criteria: language",
-      frequency              = "Inclusion criteria: frequency",
-      availability_mentioned = "Inclusion criteria: availability",
-      release_date_mentioned = "Inclusion criteria: release date/recency",
-      clinical_relevance     = "Inclusion criteria: clinical relevance",
-      min_scale_citation     = "Inclusion criteria: minimum citation threshold"
+      language_mentioned     = "language",
+      frequency              = "frequency",
+      availability_mentioned = "availability",
+      release_date_mentioned = "release date/recency",
+      clinical_relevance     = "clinical relevance",
+      min_scale_citation     = "minimum citation threshold"
     ),
-    percent = scales::percent(n_true / n_incl, accuracy = 0.1),
-    `Studies (%)` = paste0(n_true, "/", n_incl, " (", percent, ")")
+    Percent = scales::percent(n_true / n_incl, accuracy = 0.1),
+    Proportion = paste0(n_true, "/", n_incl)
   ) %>%
-  select(variable, n_true, `Studies (%)`) %>%
+  select(variable, n_true, Proportion, Percent) %>%
+  rename("Inclusion criteria" = variable) %>% 
   arrange(desc(n_true))
-
+  
+criteria_inclusion_block
 
 
 # --- Append as 4th table to the same Word document ---
@@ -874,7 +1205,7 @@ doc <- doc %>%
   body_add_par("", style = "Normal") %>%
   body_add_flextable(
     ft_minimal(
-      criteria_table_final,
+      criteria_combo_block,
       "Table W. Reported scale-selection criteria among studies conducting a scale search (N = 32)"
     )
   )
@@ -883,5 +1214,115 @@ doc <- doc %>%
 dir.create(here("outputs"), showWarnings = FALSE)
 
 print(doc, target = here("outputs", "tables_database_section.docx"))
+
+# --- Append as 4th table to the same Word document ---
+doc <- doc %>%
+  body_add_par("", style = "Normal") %>%
+  body_add_flextable(
+    ft_minimal(
+      criteria_inclusion_block,
+      "Table H. Prevalence of specific inclusion criteria among studies reporting inclusion criteria  (N = 28)"
+    )
+  )
+
+# --- Save/overwrite the same Word file (or choose a new filename) ---
+dir.create(here("outputs"), showWarnings = FALSE)
+
+print(doc, target = here("outputs", "tables_database_section.docx"))
+
+```
+
+
+
+```{r}
+
+
+# --- helper: summarise a binary column as reported/not reported ---
+summ_binary <- function(data, col) {
+  data %>%
+    summarise(
+      n = n(),
+      n_true = sum({{ col }} == TRUE, na.rm = TRUE),
+      n_false = sum({{ col }} == FALSE, na.rm = TRUE)
+    ) %>%
+    mutate(
+      prop_true = n_true / n, 
+      percent_true = scales::percent(prop_true, accuracy = 0.1),
+      report = paste0(n_true, "/", n)
+    )
+}
+
+# --- main binary decisions (paper-level) ---
+tab_transform_main <- bind_rows(
+  summ_binary(dat, within_scale_item_collapse) %>% mutate(method = "Within-scale item collapsing"),
+  summ_binary(dat, reverse_worded_items) %>% mutate(method = "Reverse-worded items collapsed"),
+  summ_binary(dat, item_exclusions) %>% mutate(method = "Item exclusions reported"),
+  summ_binary(dat, idiosyncratic_items) %>% mutate(method = "Idiosyncratic/unique items discussed"),
+  summ_binary(dat, compound_items) %>% mutate(method = "Compound items discussed")
+) %>%
+  select(method, n_true, report, percent_true)
+
+# --- compound handling subrows: conditional on compound_items == TRUE ---
+# Denominator = number of studies that discussed compound items
+n_compound <- dat %>%
+  summarise(n = sum(compound_items == TRUE, na.rm = TRUE)) %>%
+  pull(n)
+
+tab_compound_sub <- dat %>%
+  filter(compound_items == TRUE) %>%
+  count(compound_items_codes, name = "n_true") %>%
+  mutate(
+    method = case_when(
+      compound_items_codes == "multi_coded" ~ "  ↳ Compound handling: multi-coded",
+      compound_items_codes == "mono_coded"  ~ "  ↳ Compound handling: mono-coded",
+      compound_items_codes == "other"       ~ "  ↳ Compound handling: other",
+      TRUE                                  ~ "  ↳ Compound handling: other/unclear"
+    ),
+    prop_true = n_true / n_compound,
+    report = paste0(n_true, "/", n_compound),
+    percent_true = scales::percent(prop_true, accuracy = 0.1),
+  ) %>%
+  select(method, n_true, report, percent_true) %>%
+  arrange(desc(n_true))
+
+# --- merge into one table ---
+tab_transformations <- bind_rows(
+  tab_transform_main,
+  tab_compound_sub
+)
+
+tab_transformations
+
+```
+
+```{r}
+dir.create(here::here("outputs"), showWarnings = FALSE)
+readr::write_csv(tab_transformations, here::here("outputs", "tab_item_transformations.csv"))
+
+```
+
+```{r}
+doc <- doc %>%
+  body_add_par("", style = "Normal") %>%
+  body_add_flextable(ft_minimal(tab_transformations, "Table X. Reported item preprocessing and transformation decisions"))
+
+print(doc, target = here::here("outputs", "tables_database_section.docx"))
+
+```
+
+```{r}
+dir.create(here::here("outputs"), showWarnings = FALSE)
+readr::write_csv(item_unit_usage, here::here("outputs", "item_unit_usage.csv"))
+readr::write_csv(unit_comparison, here::here("outputs", "unit_comparison.csv"))
+readr::write_csv(reduction_summary, here::here("outputs", "reduction_summary.csv"))
+readr::write_csv(reduction_other_levels, here::here("outputs", "reduction_other_levels.csv"))
+readr::write_csv(diag_fw_usage, here::here("outputs", "diag_fw_usage.csv"))
+readr::write_csv(reduction_summary_trim, here::here("outputs", "reduction_summary_trim.csv"))
+readr::write_csv(reduction_by_unit_token, here::here("outputs", "reduction_by_unit_token.csv"))
+readr::write_csv(unit_counts_total_analyses, here::here("outputs", "unit_counts_total_analyses.csv"))
+readr::write_csv(number_of_raters, here::here("outputs", "number_of_raters.csv"))
+
+
+
 ```
 

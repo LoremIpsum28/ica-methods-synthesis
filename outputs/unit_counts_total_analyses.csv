@@ -1,4 +1,4 @@
-item_unit_token,n_analyses,percent
+unit_token,n,percent
 symptom_level,28,63.6%
 category_level,12,27.3%
 criterion_level,2,4.5%

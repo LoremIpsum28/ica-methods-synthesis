@@ -1,0 +1,888 @@
+---
+title: "Methods descriptives"
+author: "Tim"
+date: "2026-04-15"
+output:
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_depth: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE
+)
+```
+
+# Aim of this script
+
+This script summarizes the methodological characteristics of the included item-content analyses (ICAs).
+It follows the order of the results chapter and keeps the workflow as linear as possible: load the data, create a few clearly separated working datasets, then calculate the descriptive summaries used in the text, tables, and figures.
+
+# Step 1: Load packages
+
+The analysis is based mainly on `tidyverse`. `janitor` is used to clean the column names, `here` handles file paths, and `officer` together with `flextable` is used for a Word export of the main tables.
+
+```{r packages}
+library(tidyverse)
+library(janitor)
+library(here)
+library(scales)
+library(officer)
+library(flextable)
+```
+
+# Step 2: Define a few small helper functions
+
+Only a small number of helper functions are used. They are kept simple and are all based on vectors rather than on more abstract tidy-evaluation.
+
+```{r helper-functions}
+std_text <- function(x) {
+  x <- as.character(x)
+  x <- stringr::str_to_lower(x)
+  x <- stringr::str_squish(x)
+  x
+}
+
+std_tags <- function(x) {
+  x <- std_text(x)
+  x <- stringr::str_replace_all(x, ",", ";")
+  x <- stringr::str_replace_all(x, ";\\s*", ";")
+  x
+}
+
+to_logical_strict <- function(x, colname = "unknown column") {
+  x_chr <- as.character(x)
+  x_std <- std_text(x_chr)
+
+  true_vals <- c("true", "t", "yes", "y", "1")
+  false_vals <- c("false", "f", "no", "n", "0")
+
+  out <- dplyr::case_when(
+    is.na(x_std) ~ NA,
+    x_std %in% true_vals ~ TRUE,
+    x_std %in% false_vals ~ FALSE,
+    TRUE ~ NA
+  )
+
+  bad_vals <- unique(x_chr[!is.na(x_std) & !(x_std %in% c(true_vals, false_vals))])
+
+  if (length(bad_vals) > 0) {
+    stop(
+      paste0(
+        "Unexpected non-boolean value(s) in ", colname, ": ",
+        paste(bad_vals, collapse = ", ")
+      )
+    )
+  }
+
+  out
+}
+
+prop_text <- function(n, d, accuracy = 0.1) {
+  if (is.na(d) || d == 0) return(NA_character_)
+  paste0(n, "/", d, " (", scales::percent(n / d, accuracy = accuracy), ")")
+}
+
+numeric_summary <- function(x) {
+  x <- x[!is.na(x)]
+
+  if (length(x) == 0) {
+    return(tibble(
+      n = 0,
+      mean = NA_real_,
+      sd = NA_real_,
+      median = NA_real_,
+      iqr = NA_real_,
+      min = NA_real_,
+      max = NA_real_,
+      q25 = NA_real_,
+      q75 = NA_real_
+    ))
+  }
+
+  tibble(
+    n = length(x),
+    mean = mean(x),
+    sd = sd(x),
+    median = median(x),
+    iqr = IQR(x),
+    min = min(x),
+    max = max(x),
+    q25 = unname(quantile(x, 0.25)),
+    q75 = unname(quantile(x, 0.75))
+  )
+}
+
+ft_minimal <- function(df, caption = NULL) {
+  ft <- flextable(df)
+
+  if (!is.null(caption)) {
+    ft <- set_caption(ft, caption)
+  }
+
+  ft |>
+    theme_booktabs() |>
+    autofit() |>
+    fontsize(size = 10, part = "all") |>
+    align(align = "left", part = "all") |>
+    valign(valign = "top", part = "all")
+}
+```
+
+# Step 3: Define paths and load raw data
+
+The CSV is read in as character data first. This avoids accidental coercion of semicolon-delimited fields such as `item_unit` or `percentage_reduction`.
+
+```{r load-data}
+output_dir <- here::here("outputs")
+
+if (!dir.exists(output_dir)) {
+  dir.create(output_dir, recursive = TRUE)
+}
+
+path_in <- here::here("data", "ica_methods.csv")
+
+raw <- readr::read_csv(
+  file = path_in,
+  col_types = readr::cols(.default = readr::col_character()),
+  na = c("", "NA", "N/A", "na", "n/a", "null", "NULL")
+)
+
+dat_raw <- raw |>
+  janitor::clean_names()
+
+glimpse(dat_raw)  # sanity check
+```
+
+```{r required-columns}
+required_cols <- c(
+  "study_id",
+  "n_scales",
+  "population",
+  "overarching_domain",
+  "administration_mode",
+  "scale_search",
+  "database",
+  "prisma_a",
+  "prisma",
+  "inclusion_binary",
+  "clinical_relevance",
+  "language_mentioned",
+  "availability_mentioned",
+  "release_date_mentioned",
+  "frequency",
+  "min_scale_citation",
+  "exclusion_criteria",
+  "item_unit",
+  "percentage_reduction",
+  "categorization_approach",
+  "diagnostic_framework",
+  "within_scale_item_collapse",
+  "reverse_worded_items",
+  "item_exclusions",
+  "compound_items",
+  "compound_items_codes",
+  "idiosyncratic_items",
+  "coding_team_reported",
+  "initial_coding_team_size",
+  "n_rater",
+  "rater_expertise_mentioned",
+  "blinded",
+  "irr_reported",
+  "codebook",
+  "software_mentioned",
+  "preregistered_rules",
+  "coding_scheme_independent_mentioned"
+)
+
+missing_required <- setdiff(required_cols, names(dat_raw))
+
+if (length(missing_required) > 0) {
+  stop(
+    paste0(
+      "The following required columns are missing: ",
+      paste(missing_required, collapse = ", ")
+    )
+  )
+}
+
+if (nrow(dat_raw) != 37) {
+  warning(
+    paste0(
+      "Expected 37 studies, but found ", nrow(dat_raw),
+      ". Check whether the current CSV export has changed."
+    )
+  )
+}
+```
+
+# Step 4: Create a few working datasets
+
+To keep the workflow readable, the raw import is preserved and a few separate working datasets are created. The main idea is simple: one dataset for logical variables, one for numeric variables, and one for standardized text fields.
+
+## Step 4a: Logical variables
+
+```{r prepare-logical-data}
+logical_cols <- c(
+  "matrix",
+  "short_scales",
+  "scale_search",
+  "prisma_a",
+  "prisma",
+  "inclusion_criteria_applicable",
+  "inclusion_binary",
+  "clinical_relevance",
+  "language_mentioned",
+  "availability_mentioned",
+  "release_date_mentioned",
+  "frequency",
+  "min_scale_citation",
+  "exclusion_criteria",
+  "multiple_analyses",
+  "within_scale_item_collapse",
+  "compound_items",
+  "idiosyncratic_items",
+  "reverse_worded_items",
+  "coding_team_reported",
+  "rater_expertise_mentioned",
+  "blinded",
+  "codebook",
+  "software_mentioned",
+  "item_exclusions",
+  "irr_reported",
+  "preregistered_rules",
+  "coding_scheme_independent_mentioned",
+  "mean_overlap",
+  "min_overlap",
+  "max_overlap",
+  "length_correlation_noted"
+)
+
+logical_cols_present <- intersect(logical_cols, names(dat_raw))
+
+dat_logical <- dat_raw
+
+for (col in logical_cols_present) {
+  dat_logical[[col]] <- to_logical_strict(dat_logical[[col]], colname = col)
+}
+```
+
+## Step 4b: Numeric variables
+
+Only variables that are clearly numeric are parsed here. The semicolon-delimited reduction field is deliberately left untouched and handled later at the analysis level.
+
+```{r prepare-numeric-data}
+dat_num <- dat_raw |>
+  mutate(
+    n_scales = readr::parse_number(n_scales),
+    initial_coding_team_size = readr::parse_number(initial_coding_team_size),
+    n_rater = readr::parse_number(n_rater),
+    mean_overlap_nr = readr::parse_number(mean_overlap_nr),
+    min_overlap_nr = readr::parse_number(min_overlap_nr),
+    max_overlap_nr = readr::parse_number(max_overlap_nr)
+  )
+```
+
+## Step 4c: Standardized text and tag fields
+
+```{r prepare-text-data}
+dat_text <- dat_raw |>
+  mutate(
+    population = std_text(population),
+    overarching_domain = std_text(overarching_domain),
+    administration_mode = std_text(administration_mode),
+    categorization_approach = std_text(categorization_approach),
+    compound_items_codes = std_text(compound_items_codes),
+    software_used = std_text(software_used),
+    matrix_source = std_text(matrix_source),
+    database = std_tags(database),
+    item_unit = std_tags(item_unit),
+    diagnostic_framework = std_tags(diagnostic_framework)
+  )
+```
+
+# Step 5: Overview of included ICAs
+
+This section summarizes the broad descriptive characteristics of the included studies.
+
+## Step 5a: Domain, administration mode, and population
+
+```{r overview-factor-tables}
+tab_population <- dat_text |>
+  count(population, name = "n") |>
+  mutate(percent = scales::percent(n / sum(n), accuracy = 0.1)) |>
+  arrange(desc(n))
+
+tab_overarching_domain <- dat_text |>
+  count(overarching_domain, name = "n") |>
+  mutate(percent = scales::percent(n / sum(n), accuracy = 0.1)) |>
+  arrange(desc(n))
+
+tab_administration_mode <- dat_text |>
+  count(administration_mode, name = "n") |>
+  mutate(percent = scales::percent(n / sum(n), accuracy = 0.1)) |>
+  arrange(desc(n))
+
+tab_population
+tab_overarching_domain
+tab_administration_mode
+```
+
+## Step 5b: Number of scales per study
+
+A second summary excludes the two broad mapping studies with exceptionally large instrument sets.
+
+```{r n-scales-descriptives}
+n_scales_full <- numeric_summary(dat_num$n_scales)
+
+exclude_ids <- c("Newson2020", "Linton2016")
+
+n_scales_excluded <- dat_num |>
+  filter(!study_id %in% exclude_ids) |>
+  pull(n_scales) |>
+  numeric_summary()
+
+n_scales_full
+n_scales_excluded
+```
+
+# Step 6: Scale search and selection transparency
+
+This section summarizes whether studies actively assembled instrument sets, whether PRISMA-type reporting was used when applicable, which information sources were reported, and how selection criteria were documented.
+
+## Step 6a: Basic binary summaries relevant to the search process
+
+```{r search-binary-summaries}
+scale_search_n <- sum(dat_logical$scale_search == TRUE, na.rm = TRUE)
+scale_search_d <- sum(!is.na(dat_logical$scale_search))
+
+prisma_applicable_n <- sum(dat_logical$prisma_a == TRUE, na.rm = TRUE)
+prisma_applicable_d <- sum(!is.na(dat_logical$prisma_a))
+
+prisma_reported_n <- dat_logical |>
+  filter(prisma_a == TRUE) |>
+  summarise(n = sum(prisma == TRUE, na.rm = TRUE)) |>
+  pull(n)
+
+prisma_reported_d <- dat_logical |>
+  filter(prisma_a == TRUE) |>
+  summarise(n = sum(!is.na(prisma))) |>
+  pull(n)
+
+search_summary <- tibble(
+  indicator = c("Scale search/manual selection", "PRISMA applicable", "PRISMA reported among applicable studies"),
+  n = c(scale_search_n, prisma_applicable_n, prisma_reported_n),
+  denominator = c(scale_search_d, prisma_applicable_d, prisma_reported_d),
+  report = c(
+    prop_text(scale_search_n, scale_search_d),
+    prop_text(prisma_applicable_n, prisma_applicable_d),
+    prop_text(prisma_reported_n, prisma_reported_d)
+  )
+)
+
+search_summary
+```
+
+## Step 6b: Database reporting and search breadth
+
+Databases are stored as semicolon-delimited fields. The code below first expands them into a long table and then summarizes both source prevalence and the number of sources per study.
+
+```{r database-tables}
+db_long <- dat_text |>
+  select(study_id, database) |>
+  separate_rows(database, sep = ";") |>
+  mutate(database = stringr::str_trim(database)) |>
+  filter(!is.na(database), database != "") |>
+  distinct(study_id, database)
+
+db_usage <- db_long |>
+  count(database, name = "n") |>
+  mutate(percent = scales::percent(n / nrow(dat_text), accuracy = 0.1)) |>
+  arrange(desc(n), database)
+
+db_breadth <- db_long |>
+  filter(database != "indeterminable") |>
+  count(study_id, name = "n_sources")
+
+db_breadth_summary <- tibble(
+  n_scale_search_studies = sum(dat_logical$scale_search == TRUE, na.rm = TRUE),
+  n_with_database_info = nrow(db_breadth),
+  mean = mean(db_breadth$n_sources),
+  median = median(db_breadth$n_sources),
+  min = min(db_breadth$n_sources),
+  max = max(db_breadth$n_sources),
+  n_single_database = sum(db_breadth$n_sources == 1)
+)
+
+db_breadth_distribution <- db_breadth |>
+  count(n_sources, name = "n_studies") |>
+  mutate(percent = scales::percent(n_studies / sum(n_studies), accuracy = 0.1)) |>
+  arrange(n_sources)
+
+db_usage
+db_breadth_summary
+db_breadth_distribution
+```
+
+## Step 6c: Selection criteria format
+
+This summary is conditional on studies that conducted a scale search.
+
+```{r selection-criteria-format}
+dat_search <- dat_logical |>
+  filter(scale_search == TRUE)
+
+criteria_combo_block <- dat_search |>
+  filter(!is.na(inclusion_binary), !is.na(exclusion_criteria)) |>
+  mutate(
+    selection_criteria_format = case_when(
+      inclusion_binary == TRUE & exclusion_criteria == TRUE ~ "Both inclusion & exclusion",
+      inclusion_binary == TRUE & exclusion_criteria == FALSE ~ "Inclusion only",
+      inclusion_binary == FALSE & exclusion_criteria == TRUE ~ "Exclusions only",
+      inclusion_binary == FALSE & exclusion_criteria == FALSE ~ "Neither inclusion nor exclusion"
+    )
+  ) |>
+  count(selection_criteria_format, name = "n") |>
+  mutate(
+    `Proportion (n/N)` = paste0(n, "/", sum(n)),
+    Percent = scales::percent(n / sum(n), accuracy = 0.1)
+  ) |>
+  rename(`Selection criteria format` = selection_criteria_format) |>
+  arrange(desc(n))
+
+criteria_combo_block
+```
+
+## Step 6d: Specific inclusion criteria
+
+This summary is restricted further to studies that reported inclusion criteria.
+
+```{r inclusion-criteria-table}
+dat_inclusion <- dat_search |>
+  filter(inclusion_binary == TRUE)
+
+n_inclusion_studies <- nrow(dat_inclusion)
+
+criteria_inclusion_block <- tibble(
+  criterion = c(
+    "language",
+    "frequency",
+    "availability",
+    "release date/recency",
+    "clinical relevance",
+    "minimum citation threshold"
+  ),
+  n = c(
+    sum(dat_inclusion$language_mentioned == TRUE, na.rm = TRUE),
+    sum(dat_inclusion$frequency == TRUE, na.rm = TRUE),
+    sum(dat_inclusion$availability_mentioned == TRUE, na.rm = TRUE),
+    sum(dat_inclusion$release_date_mentioned == TRUE, na.rm = TRUE),
+    sum(dat_inclusion$clinical_relevance == TRUE, na.rm = TRUE),
+    sum(dat_inclusion$min_scale_citation == TRUE, na.rm = TRUE)
+  )
+) |>
+  mutate(
+    `Proportion (n/N)` = paste0(n, "/", n_inclusion_studies),
+    Percent = scales::percent(n / n_inclusion_studies, accuracy = 0.1)
+  ) |>
+  rename(`Inclusion criteria` = criterion) |>
+  arrange(desc(n))
+
+criteria_inclusion_block
+```
+
+# Step 7: Unit of comparison and percentage reduction
+
+This section is handled on the analysis level because some studies report more than one overlap analysis. The key point is that `item_unit` and `percentage_reduction` must be split into aligned tokens within each study.
+
+## Step 7a: Expand to an analysis-level dataset
+
+```{r analysis-level-data}
+analysis_long <- dat_raw |>
+  transmute(
+    study_id,
+    item_unit = std_tags(item_unit),
+    percentage_reduction
+  ) |>
+  rowwise() |>
+  mutate(
+    unit_list = list({
+      x <- item_unit
+      if (is.na(x) || x == "") character(0) else stringr::str_split(x, ";", simplify = FALSE)[[1]]
+    }),
+    reduction_list = list({
+      x <- percentage_reduction
+      if (is.na(x) || x == "") {
+        numeric(0)
+      } else {
+        vals <- stringr::str_split(as.character(x), ";", simplify = FALSE)[[1]]
+        vals <- stringr::str_trim(vals)
+        vals <- stringr::str_replace_all(vals, ",", ".")
+        readr::parse_number(vals)
+      }
+    }),
+    n_units = length(unit_list),
+    n_reduction = length(reduction_list)
+  ) |>
+  ungroup()
+
+length_mismatch <- analysis_long |>
+  filter(n_reduction > 0, n_units != n_reduction)
+
+if (nrow(length_mismatch) > 0) {
+  warning(
+    paste0(
+      "Some studies have unequal numbers of item_unit and percentage_reduction entries: ",
+      paste(length_mismatch$study_id, collapse = ", ")
+    )
+  )
+}
+
+analysis_long <- analysis_long |>
+  select(study_id, unit_list, reduction_list) |>
+  mutate(row_id = row_number()) |>
+  unnest_longer(unit_list, indices_to = "idx") |>
+  rename(unit_token = unit_list) |>
+  left_join(
+    analysis_long |>
+      select(study_id, reduction_list) |>
+      mutate(row_id = row_number()) |>
+      unnest_longer(reduction_list, indices_to = "idx") |>
+      rename(percentage_reduction_num = reduction_list),
+    by = c("study_id", "row_id", "idx")
+  ) |>
+  select(-row_id) |>
+  mutate(unit_token = stringr::str_trim(unit_token))
+
+if (nrow(analysis_long) != 44) {
+  warning(
+    paste0(
+      "Expected 44 analysis-level rows based on item_unit. Found ", nrow(analysis_long), "."
+    )
+  )
+}
+
+analysis_long
+```
+
+## Step 7b: Unit-of-comparison counts
+
+```{r unit-counts}
+unit_counts_total_analyses <- analysis_long |>
+  count(unit_token, name = "n") |>
+  mutate(percent = scales::percent(n / sum(n), accuracy = 0.1)) |>
+  arrange(desc(n))
+
+unit_counts_total_analyses
+```
+
+## Step 7c: Percentage reduction summaries
+
+```{r percentage-reduction-summaries}
+reduction_summary <- analysis_long |>
+  filter(!is.na(percentage_reduction_num)) |>
+  pull(percentage_reduction_num) |>
+  numeric_summary() |>
+  mutate(n_total_analyses = nrow(analysis_long)) |>
+  relocate(n_total_analyses)
+
+reduction_by_unit_token <- analysis_long |>
+  filter(!is.na(percentage_reduction_num)) |>
+  group_by(unit_token) |>
+  summarise(
+    n = n(),
+    mean = mean(percentage_reduction_num),
+    sd = sd(percentage_reduction_num),
+    median = median(percentage_reduction_num),
+    iqr = IQR(percentage_reduction_num),
+    min = min(percentage_reduction_num),
+    max = max(percentage_reduction_num),
+    q25 = unname(quantile(percentage_reduction_num, 0.25)),
+    q75 = unname(quantile(percentage_reduction_num, 0.75)),
+    .groups = "drop"
+  ) |>
+  arrange(desc(n))
+
+reduction_summary
+reduction_by_unit_token
+```
+
+## Step 7d: Plot the two most common unit types
+
+```{r reduction-plot}
+plot_reduction <- analysis_long |>
+  filter(unit_token %in% c("symptom_level", "category_level")) |>
+  filter(!is.na(percentage_reduction_num)) |>
+  mutate(unit_token = factor(unit_token, levels = c("symptom_level", "category_level")))
+
+fig_reduction_by_unit <- ggplot(plot_reduction, aes(x = unit_token, y = percentage_reduction_num)) +
+  geom_boxplot(outlier.shape = NA) +
+  geom_jitter(width = 0.15, height = 0, alpha = 0.7) +
+  labs(x = NULL, y = "Percentage reduction") +
+  theme_minimal(base_size = 12)
+
+fig_reduction_by_unit
+
+ggsave(
+  filename = file.path(output_dir, "fig_percentage_reduction_by_unit.png"),
+  plot = fig_reduction_by_unit,
+  width = 6.5,
+  height = 4.5,
+  dpi = 300,
+  bg = "white"
+)
+```
+
+# Step 8: Categorization approach and diagnostic framework
+
+The categorization approach is a single-value field. The diagnostic-framework field can contain more than one tag per study.
+
+```{r categorization-framework}
+tab_categorization_approach <- dat_text |>
+  count(categorization_approach, name = "n") |>
+  mutate(percent = scales::percent(n / sum(n), accuracy = 0.1)) |>
+  arrange(desc(n))
+
+diag_long <- dat_text |>
+  select(study_id, diagnostic_framework) |>
+  separate_rows(diagnostic_framework, sep = ";") |>
+  mutate(diagnostic_framework = stringr::str_trim(diagnostic_framework)) |>
+  filter(!is.na(diagnostic_framework), diagnostic_framework != "") |>
+  distinct(study_id, diagnostic_framework)
+
+diag_fw_usage <- diag_long |>
+  count(diagnostic_framework, name = "n") |>
+  mutate(percent = scales::percent(n / nrow(dat_text), accuracy = 0.1)) |>
+  arrange(desc(n), diagnostic_framework)
+
+diag_fw_breadth <- diag_long |>
+  count(study_id, name = "n_frameworks")
+
+diag_fw_breadth_summary <- tibble(
+  n_coded = nrow(diag_fw_breadth),
+  mean = mean(diag_fw_breadth$n_frameworks),
+  median = median(diag_fw_breadth$n_frameworks),
+  min = min(diag_fw_breadth$n_frameworks),
+  max = max(diag_fw_breadth$n_frameworks)
+)
+
+tab_categorization_approach
+diag_fw_usage
+diag_fw_breadth_summary
+```
+
+# Step 9: Item preprocessing and transformation decisions
+
+This section reports the prevalence of the main preprocessing and transformation decisions. The compound-item subrows use a conditional denominator restricted to studies that mentioned compound items.
+
+```{r transformation-table}
+n_total_studies <- nrow(dat_logical)
+n_compound <- sum(dat_logical$compound_items == TRUE, na.rm = TRUE)
+
+tab_transform_main <- tibble(
+  Decision = c(
+    "Within-scale item collapsing",
+    "Reverse-worded items collapsed",
+    "Item exclusions reported",
+    "Idiosyncratic/unique items discussed",
+    "Compound items discussed"
+  ),
+  n = c(
+    sum(dat_logical$within_scale_item_collapse == TRUE, na.rm = TRUE),
+    sum(dat_logical$reverse_worded_items == TRUE, na.rm = TRUE),
+    sum(dat_logical$item_exclusions == TRUE, na.rm = TRUE),
+    sum(dat_logical$idiosyncratic_items == TRUE, na.rm = TRUE),
+    sum(dat_logical$compound_items == TRUE, na.rm = TRUE)
+  )
+) |>
+  mutate(
+    `Proportion (n/N)` = paste0(n, "/", n_total_studies),
+    Percent = scales::percent(n / n_total_studies, accuracy = 0.1)
+  )
+
+tab_compound_sub <- dat_text |>
+  select(study_id, compound_items_codes) |>
+  left_join(dat_logical |> select(study_id, compound_items), by = "study_id") |>
+  filter(compound_items == TRUE) |>
+  filter(!is.na(compound_items_codes), compound_items_codes != "") |>
+  count(compound_items_codes, name = "n") |>
+  mutate(
+    Decision = case_when(
+      compound_items_codes == "multi_coded" ~ "  ↳ Compound handling: multi-coded",
+      compound_items_codes == "mono_coded" ~ "  ↳ Compound handling: mono-coded",
+      compound_items_codes == "other" ~ "  ↳ Compound handling: other",
+      TRUE ~ "  ↳ Compound handling: other/unclear"
+    ),
+    `Proportion (n/N)` = paste0(n, "/", n_compound),
+    Percent = scales::percent(n / n_compound, accuracy = 0.1)
+  ) |>
+  select(Decision, n, `Proportion (n/N)`, Percent) |>
+  arrange(desc(n))
+
+tab_transformations <- bind_rows(tab_transform_main, tab_compound_sub)
+
+tab_transformations
+```
+
+# Step 10: Coding workflow, reliability, and reproducibility
+
+This section summarizes the currently extracted coding-workflow variables and the additional reproducibility indicators already in the dataset.
+
+## Step 10a: Coding team and rater descriptives
+
+```{r coding-team-descriptives}
+coding_team_summary <- tibble(
+  Indicator = "Coding team reported",
+  n = sum(dat_logical$coding_team_reported == TRUE, na.rm = TRUE),
+  denominator = sum(!is.na(dat_logical$coding_team_reported))
+) |>
+  mutate(report = prop_text(n, denominator))
+
+rater_expertise_summary <- tibble(
+  Indicator = "Rater expertise mentioned",
+  n = sum(dat_logical$rater_expertise_mentioned == TRUE, na.rm = TRUE),
+  denominator = sum(!is.na(dat_logical$rater_expertise_mentioned))
+) |>
+  mutate(report = prop_text(n, denominator))
+
+blinded_summary <- tibble(
+  Indicator = "Blinded",
+  n = sum(dat_logical$blinded == TRUE, na.rm = TRUE),
+  denominator = sum(!is.na(dat_logical$blinded))
+) |>
+  mutate(report = prop_text(n, denominator))
+
+initial_team_summary <- numeric_summary(dat_num$initial_coding_team_size)
+n_rater_summary <- numeric_summary(dat_num$n_rater)
+
+coding_team_summary
+rater_expertise_summary
+blinded_summary
+initial_team_summary
+n_rater_summary
+```
+
+## Step 10b: Additional reproducibility indicators
+
+```{r reproducibility-indicators}
+reproducibility_table <- tibble(
+  Indicator = c(
+    "Interrater reliability reported",
+    "Codebook reported",
+    "Software mentioned",
+    "Independent coding scheme mentioned",
+    "Preregistered rules reported"
+  ),
+  n = c(
+    sum(dat_logical$irr_reported == TRUE, na.rm = TRUE),
+    sum(dat_logical$codebook == TRUE, na.rm = TRUE),
+    sum(dat_logical$software_mentioned == TRUE, na.rm = TRUE),
+    sum(dat_logical$coding_scheme_independent_mentioned == TRUE, na.rm = TRUE),
+    sum(dat_logical$preregistered_rules == TRUE, na.rm = TRUE)
+  ),
+  denominator = c(
+    sum(!is.na(dat_logical$irr_reported)),
+    sum(!is.na(dat_logical$codebook)),
+    sum(!is.na(dat_logical$software_mentioned)),
+    sum(!is.na(dat_logical$coding_scheme_independent_mentioned)),
+    sum(!is.na(dat_logical$preregistered_rules))
+  )
+) |>
+  mutate(report = purrr::map2_chr(n, denominator, prop_text))
+
+reproducibility_table
+```
+
+# Step 11: Export outputs
+
+The main tables are written to the `outputs` folder as CSV files. A Word file is also created for convenience. The style selection for Word is kept defensive because style names can differ across local Word installations.
+
+```{r write-csv-output}
+readr::write_csv(tab_population, file.path(output_dir, "tab_population.csv"))
+readr::write_csv(tab_overarching_domain, file.path(output_dir, "tab_overarching_domain.csv"))
+readr::write_csv(tab_administration_mode, file.path(output_dir, "tab_administration_mode.csv"))
+readr::write_csv(n_scales_full, file.path(output_dir, "n_scales_full.csv"))
+readr::write_csv(n_scales_excluded, file.path(output_dir, "n_scales_excluded.csv"))
+readr::write_csv(search_summary, file.path(output_dir, "search_summary.csv"))
+readr::write_csv(db_usage, file.path(output_dir, "db_usage.csv"))
+readr::write_csv(db_breadth_summary, file.path(output_dir, "db_breadth_summary.csv"))
+readr::write_csv(db_breadth_distribution, file.path(output_dir, "db_breadth_distribution.csv"))
+readr::write_csv(criteria_combo_block, file.path(output_dir, "criteria_combo_block.csv"))
+readr::write_csv(criteria_inclusion_block, file.path(output_dir, "criteria_inclusion_block.csv"))
+readr::write_csv(unit_counts_total_analyses, file.path(output_dir, "unit_counts_total_analyses.csv"))
+readr::write_csv(reduction_summary, file.path(output_dir, "reduction_summary.csv"))
+readr::write_csv(reduction_by_unit_token, file.path(output_dir, "reduction_by_unit_token.csv"))
+readr::write_csv(tab_categorization_approach, file.path(output_dir, "tab_categorization_approach.csv"))
+readr::write_csv(diag_fw_usage, file.path(output_dir, "diag_fw_usage.csv"))
+readr::write_csv(tab_transformations, file.path(output_dir, "tab_transformations.csv"))
+readr::write_csv(reproducibility_table, file.path(output_dir, "reproducibility_table.csv"))
+```
+
+```{r write-word-output}
+doc <- read_docx()
+
+style_info <- styles_info(doc, type = "paragraph")
+paragraph_styles <- style_info$style_name
+
+heading1_style <- if ("Heading 1" %in% paragraph_styles) {
+  "Heading 1"
+} else if ("heading 1" %in% paragraph_styles) {
+  "heading 1"
+} else {
+  "Normal"
+}
+
+heading2_style <- if ("Heading 2" %in% paragraph_styles) {
+  "Heading 2"
+} else if ("heading 2" %in% paragraph_styles) {
+  "heading 2"
+} else {
+  "Normal"
+}
+
+normal_style <- if ("Normal" %in% paragraph_styles) {
+  "Normal"
+} else {
+  paragraph_styles[1]
+}
+
+doc <- doc |>
+  body_add_par("Methods synthesis tables", style = heading1_style) |>
+  body_add_par("Overview", style = heading2_style) |>
+  body_add_flextable(ft_minimal(tab_population, "Population")) |>
+  body_add_par("", style = normal_style) |>
+  body_add_flextable(ft_minimal(tab_overarching_domain, "Overarching domain")) |>
+  body_add_par("", style = normal_style) |>
+  body_add_flextable(ft_minimal(tab_administration_mode, "Administration mode")) |>
+  body_add_par("", style = normal_style) |>
+  body_add_par("Scale search and selection transparency", style = heading2_style) |>
+  body_add_flextable(ft_minimal(db_usage, "Reported databases/search sources")) |>
+  body_add_par("", style = normal_style) |>
+  body_add_flextable(ft_minimal(criteria_combo_block, "Selection criteria format")) |>
+  body_add_par("", style = normal_style) |>
+  body_add_flextable(ft_minimal(criteria_inclusion_block, "Specific inclusion criteria")) |>
+  body_add_par("", style = normal_style) |>
+  body_add_par("Unit of comparison and transformations", style = heading2_style) |>
+  body_add_flextable(ft_minimal(unit_counts_total_analyses, "Unit of comparison across analyses")) |>
+  body_add_par("", style = normal_style) |>
+  body_add_flextable(ft_minimal(reduction_by_unit_token, "Percentage reduction by unit type")) |>
+  body_add_par("", style = normal_style) |>
+  body_add_flextable(ft_minimal(tab_categorization_approach, "Categorization approach")) |>
+  body_add_par("", style = normal_style) |>
+  body_add_flextable(ft_minimal(diag_fw_usage, "Diagnostic frameworks referenced")) |>
+  body_add_par("", style = normal_style) |>
+  body_add_flextable(ft_minimal(tab_transformations, "Item preprocessing and transformation decisions")) |>
+  body_add_par("", style = normal_style) |>
+  body_add_par("Coding workflow and reproducibility", style = heading2_style) |>
+  body_add_flextable(ft_minimal(reproducibility_table, "Reproducibility indicators"))
+
+print(doc, target = file.path(output_dir, "tables_methods_synthesis_simpler.docx"))
+```
+
+# Step 12: Notes for later extension
+
+The remaining result sections, the discussion, and the limitations can be added later as additional steps. Because the raw data, logical variables, numeric variables, and analysis-level data are kept separate, new sections can be added without having to rewrite the earlier parts.

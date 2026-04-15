@@ -1,4 +1,4 @@
-method,n_true,report,percent_true
+Decision,n,Proportion (n/N),Percent
 Within-scale item collapsing,16,16/37,43.2%
 Reverse-worded items collapsed,7,7/37,18.9%
 Item exclusions reported,13,13/37,35.1%
