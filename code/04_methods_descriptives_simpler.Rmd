@@ -785,6 +785,58 @@ team_size_table <- tibble::tibble(
   )
 
 team_size_table
+
+initial_team_size_dist <- dat_num %>%
+  filter(!is.na(initial_coding_team_size)) %>%
+  count(initial_coding_team_size, name = "n") %>%
+  mutate(
+    percent = 100 * n / sum(n)
+  ) %>%
+  arrange(initial_coding_team_size) %>%
+  mutate(
+    percent = round(percent, 1)
+  )
+
+initial_team_size_dist
+
+n_rater_size_dist <- dat_num %>%
+  filter(!is.na(n_rater)) %>%
+  count(n_rater, name = "n") %>%
+  mutate(
+    percent = 100 * n / sum(n)
+  ) %>%
+  arrange(n_rater) %>%
+  mutate(
+    percent = round(percent, 1)
+  )
+
+n_rater_size_dist
+
+coding_team_expansion <- dat_num %>%
+  filter(!is.na(initial_coding_team_size), !is.na(n_rater)) %>%
+  mutate(additional_raters = n_rater - initial_coding_team_size)
+
+team_expansion_dist <- coding_team_expansion %>%
+  count(additional_raters, name = "n") %>%
+  mutate(
+    percent = 100 * n / sum(n)
+  ) %>%
+  arrange(additional_raters) %>%
+  mutate(
+    percent = round(percent, 1)
+  )
+
+team_expansion_binary <- coding_team_expansion %>%
+  mutate(expanded = additional_raters > 0) %>%
+  count(expanded, name = "n") %>%
+  mutate(
+    percent = 100 * n / sum(n)
+  ) %>%
+  mutate(
+    percent = round(percent, 1)
+  )
+
+team_expansion_binary
 ```
 
 ## Step 10b: Additional reproducibility indicators
@@ -841,6 +893,15 @@ readr::write_csv(tab_categorization_approach, file.path(output_dir, "tab_categor
 readr::write_csv(diag_fw_usage, file.path(output_dir, "diag_fw_usage.csv"))
 readr::write_csv(tab_transformations, file.path(output_dir, "tab_transformations.csv"))
 readr::write_csv(reproducibility_table, file.path(output_dir, "reproducibility_table.csv"))
+readr::write_csv(initial_team_size_dist, file.path(output_dir, "initial_team_size_dist.csv"))
+readr::write_csv(team_expansion_binary, file.path(output_dir, "team_expansion_binary.csv"))
+readr::write_csv(n_rater_size_dist, file.path(output_dir, "n_rater_size_dist.csv"))
+
+
+
+
+
+
 ```
 
 ```{r write-word-output}
@@ -899,8 +960,18 @@ doc <- doc %>%
   body_add_flextable(ft_minimal(tab_transformations, "Item preprocessing and transformation decisions")) %>%
   body_add_par("", style = normal_style) %>%
   body_add_par("Coding workflow and reproducibility", style = heading2_style) %>%
-  body_add_flextable(ft_minimal(team_size_table, "Coding team and rater counts")) %>%
+  body_add_par("", style = normal_style) %>%
+  body_add_flextable(ft_minimal(team_size_table, "Coding team and rater counts")) %>% 
+  body_add_par("", style = normal_style) %>%
+  body_add_flextable(ft_minimal(initial_team_size_dist, "Initial team distribution")) %>% 
+  body_add_par("", style = normal_style) %>%
+  body_add_flextable(ft_minimal(n_rater_size_dist, "Rater team distribution")) %>% 
+  body_add_par("", style = normal_style) %>%
+  body_add_flextable(ft_minimal(team_expansion_binary, "Coding team expansion")) %>%
+  body_add_par("", style = normal_style) %>%
   body_add_flextable(ft_minimal(reproducibility_table, "Reproducibility indicators"))
+  
+  
 
 print(doc, target = file.path(output_dir, "tables_methods_synthesis_simpler.docx"))
 ```
