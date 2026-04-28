@@ -1039,10 +1039,120 @@ software_used_table <- dat_text %>%
 software_used_table
 
 ```
+```{r}
+# Step 11a: Reporting of overlap outputs ----------------------------------
+
+overlap_reporting_table <- tibble::tibble(
+  Indicator = c(
+    "Mean overlap reported",
+    "Minimum overlap reported",
+    "Maximum overlap reported",
+    "Length × mean-overlap relation noted"
+  ),
+  `n (Studies)` = c(
+    sum(dat_logical$mean_overlap == TRUE, na.rm = TRUE),
+    sum(dat_logical$min_overlap == TRUE, na.rm = TRUE),
+    sum(dat_logical$max_overlap == TRUE, na.rm = TRUE),
+    sum(dat_logical$length_correlation_noted == TRUE, na.rm = TRUE)
+  ),
+  denominator = c(
+    sum(!is.na(dat_logical$mean_overlap)),
+    sum(!is.na(dat_logical$min_overlap)),
+    sum(!is.na(dat_logical$max_overlap)),
+    sum(!is.na(dat_logical$length_correlation_noted))
+  )
+) %>%
+  mutate(
+    `Proportion (n/N)` = paste0(`n (Studies)`, "/", denominator),
+    Percent = 100 * `n (Studies)` / denominator
+  ) %>%
+  mutate(
+    Percent = paste0(round(Percent, 1), "%")
+  ) %>%
+  select(Indicator, `n (Studies)`, `Proportion (n/N)`, Percent)
+
+overlap_reporting_table
+
+# Step 11b: Matrix source -------------------------------------------------
+
+matrix_source_table <- dat_text %>%
+  filter(!is.na(matrix_source)) %>%
+  count(matrix_source, name = "n (Studies)") %>%
+  mutate(
+    `Proportion (n/N)` = paste0(`n (Studies)`, "/", sum(`n (Studies)`)),
+    Percent = 100 * `n (Studies)` / sum(`n (Studies)`)
+  ) %>%
+  mutate(
+    Percent = paste0(round(Percent, 1), "%")
+  ) %>%
+  arrange(desc(`n (Studies)`))
+
+matrix_source_table
+```
+
+# Step 11c: Numeric descriptives of reported overlap summaries
+```{r}
+
+overlap_numeric_summary <- tibble::tibble(
+  metric = c("Mean overlap", "Minimum overlap", "Maximum overlap"),
+  n = c(
+    sum(!is.na(dat_num$mean_overlap_nr)),
+    sum(!is.na(dat_num$min_overlap_nr)),
+    sum(!is.na(dat_num$max_overlap_nr))
+  ),
+  mean = c(
+    mean(dat_num$mean_overlap_nr, na.rm = TRUE),
+    mean(dat_num$min_overlap_nr, na.rm = TRUE),
+    mean(dat_num$max_overlap_nr, na.rm = TRUE)
+  ),
+  median = c(
+    median(dat_num$mean_overlap_nr, na.rm = TRUE),
+    median(dat_num$min_overlap_nr, na.rm = TRUE),
+    median(dat_num$max_overlap_nr, na.rm = TRUE)
+  ),
+  min = c(
+    min(dat_num$mean_overlap_nr, na.rm = TRUE),
+    min(dat_num$min_overlap_nr, na.rm = TRUE),
+    min(dat_num$max_overlap_nr, na.rm = TRUE)
+  ),
+  max = c(
+    max(dat_num$mean_overlap_nr, na.rm = TRUE),
+    max(dat_num$min_overlap_nr, na.rm = TRUE),
+    max(dat_num$max_overlap_nr, na.rm = TRUE)
+  )
+) %>%
+  mutate(
+    across(c(mean, median, min, max), ~ round(.x, 2))
+  )
+
+overlap_numeric_summary
 
 
 
-# Step 11: Export outputs
+
+# Step 11d: Types of length-overlap reporting -----------------------------
+
+length_correlation_type_table <- dat_text %>%
+  filter(!is.na(correlation_lengthxmeanoverlap_type)) %>%
+  count(correlation_lengthxmeanoverlap_type, name = "n (Studies)") %>%
+  mutate(
+    `Proportion (n/N)` = paste0(`n (Studies)`, "/", sum(`n (Studies)`)),
+    Percent = 100 * `n (Studies)` / sum(`n (Studies)`)
+  ) %>%
+  mutate(
+    Percent = paste0(round(Percent, 1), "%")
+  ) %>%
+  arrange(desc(`n (Studies)`))
+
+length_correlation_type_table
+```
+
+
+
+
+```
+
+# Step 12: Export outputs
 
 The main tables are written to the `outputs` folder as CSV files. A Word file is also created for convenience. The style selection for Word is kept defensive because style names can differ across local Word installations.
 
@@ -1069,6 +1179,7 @@ readr::write_csv(initial_team_size_dist, file.path(output_dir, "initial_team_siz
 readr::write_csv(team_expansion_binary, file.path(output_dir, "team_expansion_binary.csv"))
 readr::write_csv(n_rater_size_dist, file.path(output_dir, "n_rater_size_dist.csv"))
 readr::write_csv(reliability_table, file.path(output_dir, "reliability_indicators.csv"))
+
 
 
 
