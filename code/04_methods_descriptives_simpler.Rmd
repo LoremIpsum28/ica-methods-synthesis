@@ -931,6 +931,21 @@ p_team_dist <- ggplot(team_dist_plot, aes(x = factor(team_size), y = n)) +
 
 p_team_dist
 
+# Figure: comparison of coding team sizes
+p_team_size <- ggplot(team_size_plot, aes(x = factor(team_size), y = n, fill = type)) +
+  geom_col(position = "dodge") +
+  labs(
+    x = "Number of coders",
+    y = "Number of studies",
+    fill = NULL,
+    title = "Coding team size across studies"
+  ) +
+  theme_minimal()
+
+p_team_size
+
+
+
 ggsave(
   filename = file.path(output_dir, "team_distribution_plot.png"),
   plot = p_team_dist,
@@ -1076,16 +1091,28 @@ overlap_reporting_table
 # Step 11b: Matrix source -------------------------------------------------
 
 matrix_source_table <- dat_text %>%
-  filter(!is.na(matrix_source)) %>%
   count(matrix_source, name = "n (Studies)") %>%
   mutate(
     `Proportion (n/N)` = paste0(`n (Studies)`, "/", sum(`n (Studies)`)),
     Percent = 100 * `n (Studies)` / sum(`n (Studies)`)
   ) %>%
   mutate(
-    Percent = paste0(round(Percent, 1), "%")
+    Percent = paste0(round(Percent, 1), "%"),
+    `Matrix source` = dplyr::recode(
+      matrix_source,
+      "main_text" = "Main text",
+      "supplement" = "Supplement",
+      "not_available" = "Not available despite overlap reporting",
+      .default = "Not applicable"
+    )
   ) %>%
-  arrange(desc(`n (Studies)`))
+  arrange(match(`Matrix source`, c(
+    "Main text",
+    "Supplement",
+    "Not available despite overlap reporting",
+    "Not applicable"
+  ))) %>%
+  select(`Matrix source`, `n (Studies)`, `Proportion (n/N)`, Percent)
 
 matrix_source_table
 ```
@@ -1147,10 +1174,76 @@ length_correlation_type_table <- dat_text %>%
 length_correlation_type_table
 ```
 
+# Step 12a: Interpretation and recommendation indicators
+```{r}
+
+interpretation_indicators_table <- tibble(
+  Indicator = c(
+    "Heterogeneity emphasized",
+    "Noninterchangeability emphasized",
+    "Careful measure selection recommended",
+    "Measure development recommended",
+    "ICA methods problems/research needs noted"
+  ),
+  `n (Studies)` = c(
+    sum(dat_logical$heterogeneity_emphasized == TRUE, na.rm = TRUE),
+    sum(dat_logical$noninterchangeability_emphasized == TRUE, na.rm = TRUE),
+    sum(dat_logical$recommend_careful_measure_selection == TRUE, na.rm = TRUE),
+    sum(dat_logical$recommend_measure_development == TRUE, na.rm = TRUE),
+    sum(dat_logical$ica_methods_problems == TRUE, na.rm = TRUE)
+  ),
+  denominator = c(
+    sum(!is.na(dat_logical$heterogeneity_emphasized)),
+    sum(!is.na(dat_logical$noninterchangeability_emphasized)),
+    sum(!is.na(dat_logical$recommend_careful_measure_selection)),
+    sum(!is.na(dat_logical$recommend_measure_development)),
+    sum(!is.na(dat_logical$ica_methods_problems))
+  )
+) %>%
+  mutate(
+    `Proportion (n/N)` = paste0(`n (Studies)`, "/", denominator),
+    Percent = 100 * `n (Studies)` / denominator
+  ) %>%
+  mutate(
+    Percent = paste0(round(Percent, 1), "%")
+  ) %>%
+  select(Indicator, `n (Studies)`, `Proportion (n/N)`, Percent)
+
+interpretation_indicators_table
 
 
+# Step 12b: Reported overlap interpretation 
 
+overlap_reported_table <- dat_text %>%
+  filter(!is.na(overlap_reported)) %>%
+  count(overlap_reported, name = "n (Studies)") %>%
+  mutate(
+    `Overlap reported` = dplyr::recode(
+      overlap_reported,
+      "very_weak_overlap" = "Very weak overlap",
+      "weak_overlap" = "Weak overlap",
+      "moderate_overlap" = "Moderate overlap",
+      "not_specified" = "Not specified"
+    )
+  ) %>%
+  arrange(match(`Overlap reported`, c(
+    "Very weak overlap",
+    "Weak overlap",
+    "Moderate overlap",
+    "Not specified"
+  ))) %>%
+  mutate(
+    `Proportion (n/N)` = paste0(`n (Studies)`, "/", sum(`n (Studies)`)),
+    Percent = 100 * `n (Studies)` / sum(`n (Studies)`)
+  ) %>%
+  mutate(
+    Percent = paste0(round(Percent, 1), "%")
+  ) %>%
+  select(`Overlap reported`, `n (Studies)`, `Proportion (n/N)`, Percent)
+
+overlap_reported_table
 ```
+
 
 # Step 12: Export outputs
 
@@ -1174,7 +1267,6 @@ readr::write_csv(reduction_by_unit_token, file.path(output_dir, "reduction_by_un
 readr::write_csv(tab_categorization_approach, file.path(output_dir, "tab_categorization_approach.csv"))
 readr::write_csv(diag_fw_usage, file.path(output_dir, "diag_fw_usage.csv"))
 readr::write_csv(tab_transformations, file.path(output_dir, "tab_transformations.csv"))
-readr::write_csv(reproducibility_table, file.path(output_dir, "reproducibility_table.csv"))
 readr::write_csv(initial_team_size_dist, file.path(output_dir, "initial_team_size_dist.csv"))
 readr::write_csv(team_expansion_binary, file.path(output_dir, "team_expansion_binary.csv"))
 readr::write_csv(n_rater_size_dist, file.path(output_dir, "n_rater_size_dist.csv"))
@@ -1257,15 +1349,23 @@ doc <- doc %>%
   height = 5.2
   ) %>%
   body_add_par("", style = normal_style) %>%
-  body_add_flextable(ft_minimal(reproducibility_table, "Coding reliability indicators")) %>%
   body_add_flextable(ft_minimal(team_expansion_binary, "Coding team expansion")) %>%
   body_add_par("", style = normal_style) %>%
   body_add_flextable(ft_minimal(reliability_table, "Coding reliability indicators")) %>% 
   body_add_flextable(ft_minimal(documentation_table, "Documentation indicators")) %>%
   body_add_par("", style = normal_style) %>%
   body_add_flextable(ft_minimal(software_used_table, "Software used")) %>%
+  body_add_par("", style = normal_style) %>% 
+  body_add_flextable(ft_minimal(overlap_reporting_table, "Overlap reporting and scale length correlation")) %>%
+  body_add_par("", style = normal_style) %>% 
+  body_add_flextable(ft_minimal(matrix_source_table, "Location of overlap matrix")) %>%
+  body_add_par("", style = normal_style) %>% 
+  body_add_flextable(ft_minimal(length_correlation_type_table, "Types of reported length correlations")) %>%
+  body_add_par("", style = normal_style) %>% 
+  body_add_flextable(ft_minimal(interpretation_indicators_table, "Interpretive claims and recommendations")) %>%
+  body_add_par("", style = normal_style) %>%
+  body_add_flextable(ft_minimal(overlap_reported_table, "How authors described overlap strength")) %>%
   body_add_par("", style = normal_style)
-  
   
   
 
