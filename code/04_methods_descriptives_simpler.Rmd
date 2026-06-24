@@ -933,21 +933,30 @@ p_team_dist
 
 # Figure: comparison of coding team sizes
 p_team_size <- ggplot(team_size_plot, aes(x = factor(team_size), y = n, fill = type)) +
-  geom_col(position = "dodge") +
+  geom_col(
+    position = position_dodge2(width = 0.9, preserve = "single"),
+    width = 0.8
+  ) +
   labs(
-    x = "Number of coders",
+    x = "Teamsize",
     y = "Number of studies",
     fill = NULL,
     title = "Coding team size across studies"
   ) +
+  scale_y_continuous(breaks = seq(0, 20, by = 2)) +
   theme_minimal()
-
 p_team_size
 
-
+ggsave(
+  filename = file.path(output_dir, "team_distribution_plot1.png"),
+  plot = p_team_size,
+  width = 8.5,
+  height = 4.5,
+  bg = "white"
+)
 
 ggsave(
-  filename = file.path(output_dir, "team_distribution_plot.png"),
+  filename = file.path(output_dir, "team_distribution_plot2.png"),
   plot = p_team_dist,
   width = 6.5,
   height = 5.5,
