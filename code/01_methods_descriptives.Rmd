@@ -37,7 +37,7 @@ library(flextable)
 
 # Step 2: Define a few small helper functions
 
-Only a small number of helper functions are used. They are kept simple and are all based on vectors rather than on more abstract tidy-evaluation.
+A small number of helper functions are used. 
 
 ```{r helper-functions}
 std_text <- function(x) {
@@ -144,7 +144,7 @@ if (!dir.exists(output_dir)) {
   dir.create(output_dir, recursive = TRUE)
 }
 
-path_in <- here::here("data", "ica_methods.csv")
+path_in <- here::here("data", "processed", "ica_methods.csv")
 
 raw <- readr::read_csv(
   file = path_in,
@@ -222,7 +222,7 @@ if (nrow(dat_raw) != 37) {
 
 # Step 4: Create a few working datasets
 
-To keep the workflow readable, the raw import is preserved and a few separate working datasets are created. The main idea is simple: one dataset for logical variables, one for numeric variables, and one for standardized text fields.
+To keep the workflow readable, the raw import is preserved and a few separate working datasets are created. The main idea: one dataset for logical variables, one for numeric variables, and one for standardized text fields.
 
 ## Step 4a: Logical variables
 
