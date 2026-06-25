@@ -1383,4 +1383,4 @@ print(doc, target = file.path(output_dir, "tables_methods_synthesis_simpler.docx
 
 # Step 12: Notes for later extension
 
-The remaining result sections, the discussion, and the limitations can be added later as additional steps. Because the raw data, logical variables, numeric variables, and analysis-level data are kept separate, new sections can be added without having to rewrite the earlier parts.
+
