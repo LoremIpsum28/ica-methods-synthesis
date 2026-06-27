@@ -1,6 +1,6 @@
-population,n,percent
-adults,20,54.1%
-mixed,11,29.7%
-children,4,10.8%
-adolescents,1,2.7%
-indeterminable,1,2.7%
+population,n,Proportion (n/N),Percent
+adults,20,20/37,54.1%
+mixed,11,11/37,29.7%
+children,4,4/37,10.8%
+adolescents,1,1/37,2.7%
+indeterminable,1,1/37,2.7%

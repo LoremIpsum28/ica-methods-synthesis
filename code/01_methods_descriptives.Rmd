@@ -314,7 +314,9 @@ This section summarizes the broad descriptive characteristics of the included st
 ```{r overview-factor-tables}
 tab_population <- dat_text %>%
   count(population, name = "n") %>%
-  mutate(percent = scales::percent(n / sum(n), accuracy = 0.1)) %>%
+  mutate(
+    `Proportion (n/N)` = paste0(n, "/", sum(n)),
+    Percent = scales::percent(n / sum(n), accuracy = 0.1)) %>%
   arrange(desc(n))
 
 tab_overarching_domain <- dat_text %>%
@@ -348,6 +350,9 @@ n_scales_excluded <- dat_num %>%
 
 n_scales_full
 n_scales_excluded
+
+```
+
 ```
 
 # Step 6: Scale search and selection transparency
