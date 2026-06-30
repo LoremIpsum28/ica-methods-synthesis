@@ -14,8 +14,7 @@ Tim Schneeberger
 
 `/code` contains the R scripts and R Markdown files used for data processing, descriptive analyses, figures, tables, and supplementary outputs. The 00_prepare_ica_methods.R code was not originally part of the pipeline and was later added for clarity of workflow.
 
-`/data/raw` contains the manually assembled and minimally processed source materials for the project. ica_extraction_master_with_notes is the original data-extraction sheet and includes all notes and context. 
-ica_extraction_analysis_columns has the same content but with all notes_columns removed. 
+`/data/raw` contains the manually assembled and minimally processed source materials for the project. ica_extraction_master_with_notes is the original data-extraction sheet and includes all notes and context. ica_extraction_analysis_columns has the same content but with all notes_columns removed. 
 
 `/data/processed` contains cleaned and analysis-ready data generated from the raw materials using the scripts in `/code`.
 
@@ -43,9 +42,9 @@ The main analysis is contained in code/01_methods_descriptives.Rmd. This file re
 
 * The regenerated outputs are written to:
 
-  outputs/tables/csv/ for machine-readable table outputs,
-  outputs/tables/docx/ for the Word table compendium,
-  outputs/figures/ for final figures
+  *outputs/tables/csv/ for machine-readable table outputs
+  *outputs/tables/docx/ for the Word table compendium
+  *outputs/figures/ for final figures
   
 
 
