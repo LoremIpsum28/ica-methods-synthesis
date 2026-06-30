@@ -205,6 +205,7 @@ required_cols <- c(
   "irr_reported",
   "codebook",
   "software_mentioned",
+  "software_used",
   "preregistered_rules",
   "coding_scheme_independent_mentioned",
   "disagreement_resolved_mentioned",
@@ -381,9 +382,6 @@ n_scales_excluded <- dat_num %>%
 
 n_scales_full
 n_scales_excluded
-
-```
-
 ```
 
 # Step 6: Scale search and selection transparency
@@ -410,7 +408,11 @@ prisma_reported_d <- dat_logical %>%
   pull(n)
 
 search_summary <- tibble(
-  indicator = c("Scale search/manual selection", "PRISMA applicable", "PRISMA reported among applicable studies"),
+  indicator = c(
+    "Scale search/manual selection",
+    "PRISMA applicable",
+    "PRISMA reported among applicable studies"
+  ),
   n = c(scale_search_n, prisma_applicable_n, prisma_reported_n),
   denominator = c(scale_search_d, prisma_applicable_d, prisma_reported_d),
   report = c(
@@ -672,7 +674,7 @@ fig_reduction_by_unit <- ggplot(plot_reduction, aes(x = unit_token, y = percenta
 fig_reduction_by_unit
 
 ggsave(
-  filename = file.path(output_dir, "fig_percentage_reduction_by_unit.png"),
+  filename = file.path(output_dirs$figures, "fig_percentage_reduction_by_unit.png"),
   plot = fig_reduction_by_unit,
   width = 6.5,
   height = 4.5,
@@ -778,7 +780,7 @@ This section summarizes the currently extracted coding-workflow variables and th
 
 ## Step 10a: Coding-team summary values
 
-```{r} 
+```{r coding-team-summary}
 coding_team_summary <- tibble(
   Indicator = "Coding team reported",
   n = sum(dat_logical$coding_team_reported == TRUE, na.rm = TRUE),
@@ -999,7 +1001,7 @@ p_team_size <- ggplot(team_size_plot, aes(x = factor(team_size), y = n, fill = t
 p_team_size
 
 ggsave(
-  filename = file.path(output_dir, "team_distribution_plot1.png"),
+  filename = file.path(output_dirs$figures, "team_distribution_plot.png"),
   plot = p_team_size,
   width = 8.5,
   height = 4.5,
@@ -1007,7 +1009,7 @@ ggsave(
 )
 
 ggsave(
-  filename = file.path(output_dir, "team_distribution_plot2.png"),
+  filename = file.path(output_dirs$diagnostics, "team_distribution_plot_alt.png"),
   plot = p_team_dist,
   width = 6.5,
   height = 5.5,
@@ -1054,7 +1056,7 @@ reliability_table <- tibble(
 reliability_table
 
 ```
-# Step 10e: Reproducibility and documentation
+## Step 10e: Reproducibility and documentation
 
 ```{r documentation-indicators}
 documentation_table <- tibble(
@@ -1154,9 +1156,9 @@ overlap_reporting_table
 
 ```
 
-# Step 11b: Matrix source 
+## Step 11b: Matrix source 
 
-```{r matrix source}
+```{r matrix-source}
 
 matrix_source_table <- dat_text %>%
   count(matrix_source, name = "n (Studies)") %>%
@@ -1185,7 +1187,7 @@ matrix_source_table <- dat_text %>%
 matrix_source_table
 ```
 
-# Step 11c: Numeric descriptives of reported overlap summaries
+## Step 11c: Numeric descriptives of reported overlap summaries
 ```{r numeric-overlap-reporting}
 
 overlap_numeric_summary <- tibble::tibble(
@@ -1224,7 +1226,7 @@ overlap_numeric_summary
 ```
 
 
-# Step 11d: Types of length-overlap reporting 
+## Step 11d: Types of length-overlap reporting 
 
 ```{r length-overlap-types}
 length_correlation_type_table <- dat_text %>%
@@ -1281,7 +1283,7 @@ interpretation_indicators_table <- tibble(
 interpretation_indicators_table
 ```
 
-# Step 12b: Reported overlap interpretation 
+## Step 12b: Reported overlap interpretation 
 ```{r overlap-text-reported}
 overlap_reported_table <- dat_text %>%
   filter(!is.na(overlap_reported)) %>%
@@ -1318,6 +1320,7 @@ overlap_reported_table
 
 The main tables are written to the `outputs` folder as CSV files. A Word file is also created for convenience. 
 
+## Step 13a: Export CSV files
 ```{r export-csv-tables}
 
 # Tables that are part of the main reproducibility output.
@@ -1343,6 +1346,7 @@ tables_to_export <- list(
   initial_team_size_dist = initial_team_size_dist,
   n_rater_size_dist = n_rater_size_dist,
   team_expansion_binary = team_expansion_binary,
+  tab_coding_desc = tab_coding_desc,
   reliability_table = reliability_table,
   documentation_table = documentation_table,
   software_used_table = software_used_table,
@@ -1365,6 +1369,7 @@ purrr::iwalk(
 
 ```
 
+## Step 13b: Export word file
 ```{r write-word-output}
 doc <- read_docx()
 
@@ -1466,6 +1471,6 @@ print(
 )
 ```
 
-# Step 12: Notes for later extension
+
 
 
