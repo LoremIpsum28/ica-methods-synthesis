@@ -19,21 +19,33 @@ ica_extraction_analysis_columns has the same content but with all notes_columns 
 
 `/data/processed` contains cleaned and analysis-ready data generated from the raw materials using the scripts in `/code`.
 
-`/methods` contains materials used to make the procedure transparent and reproducible, especially the extraction codebook and related instructions.
+`/method` contains materials used to make the procedure transparent and reproducible, especially the extraction codebook and related instructions.
+
+`/outputs` contains the figures and tables used in the paper
+  `/figures` for final figures 
+  `/tables` contains a `/csv` with individual .csv table outputs and a `/docx`for a compact word table compendium
 
 `/supplementary-materials` contains files with supplementary materials, including supplementary tables and a knitted HTML version of the code for readability.
 
-`/outputs` contains various tables and figures.
 
 
 
 ## How To Reproduce This Project
 
-* Start with the files in `/methods` to understand the extraction framework and coding rules.
-* The second step would be to retrieve and code the articles, for this use the codebook in `/methods`. If you only want to use the code, skip this step.
-* To run the code, either start by running ica_extraction_master_with_notes in `/raw` in th
-* Run the scripts in `/code` to generate cleaned datasets in `/data/processed` and to reproduce the reported analyses, tables, and figures.
-* Supplementary outputs and additional analysis documents are stored in `/supplementary-materials`.
+The main analysis is contained in code/01_methods_descriptives.Rmd. This file reads the cleaned analysis dataset from data/processed/ica_methods.csv and reproduces the descriptive analyses, tables, figures, and supplementary output files.
+
+* Start with the files in /methods to understand the extraction framework and coding rules.
+
+* The second step would be to retrieve and code the articles (full list with citation in `/supplementary_materials/supplementary_tables`), for this use the codebook in /methods (instructions for the coding in the same folder as a .pdf). 
+      If you only want to use the code, skip this step
+      
+* To run the analysis, knit or run code/01_methods_descriptives.Rmd.
+
+* The regenerated outputs are written to:
+
+  outputs/tables/csv/ for machine-readable table outputs,
+  outputs/tables/docx/ for the Word table compendium,
+  outputs/figures/ for final figures
 
 ## License
 
