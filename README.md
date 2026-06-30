@@ -21,18 +21,19 @@ ica_extraction_analysis_columns has the same content but with all notes_columns 
 
 `/methods` contains materials used to make the procedure transparent and reproducible, especially the extraction codebook and related instructions.
 
-`/supplementary-materials` contains files intended to accompany the thesis, including supplementary tables and a knitted HTML version of the code for readability.
+`/supplementary-materials` contains files with supplementary materials, including supplementary tables and a knitted HTML version of the code for readability.
 
-`/outputs` contains various outputs
+`/outputs` contains various tables and figures.
 
 
 
 ## How To Reproduce This Project
 
 * Start with the files in `/methods` to understand the extraction framework and coding rules.
-* The raw project materials are stored in `/data/raw`.
+* The second step would be to retrieve and code the articles, for this use the codebook in `/methods`. If you only want to use the code, skip this step.
+* To run the code, either start by running ica_extraction_master_with_notes in `/raw` in th
 * Run the scripts in `/code` to generate cleaned datasets in `/data/processed` and to reproduce the reported analyses, tables, and figures.
-* Supplementary outputs and readable analysis documents are stored in `/supplementary-materials`.
+* Supplementary outputs and additional analysis documents are stored in `/supplementary-materials`.
 
 ## License
 

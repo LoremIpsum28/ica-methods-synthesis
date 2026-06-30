@@ -138,14 +138,24 @@ ft_minimal <- function(df, caption = NULL) {
 The CSV is read in as character data first. This avoids accidental coercion of semicolon-delimited fields such as `item_unit` or `percentage_reduction`.
 
 ```{r load-data}
-output_dir <- here::here("outputs")
-
-if (!dir.exists(output_dir)) {
-  dir.create(output_dir, recursive = TRUE)
-}
-
+# Input file
 path_in <- here::here("data", "processed", "ica_methods.csv")
 
+if (!file.exists(path_in)) {
+  stop("Processed analysis file not found: ", path_in)
+}
+
+# Output folders
+output_dirs <- list(
+  figures     = here::here("outputs", "figures"),
+  tables_csv  = here::here("outputs", "tables", "csv"),
+  tables_docx = here::here("outputs", "tables", "docx"),
+  diagnostics = here::here("outputs", "diagnostics")
+)
+
+purrr::walk(output_dirs, dir.create, recursive = TRUE, showWarnings = FALSE)
+
+# Read all columns as character first.
 raw <- readr::read_csv(
   file = path_in,
   col_types = readr::cols(.default = readr::col_character()),
@@ -155,7 +165,7 @@ raw <- readr::read_csv(
 dat_raw <- raw %>%
   janitor::clean_names()
 
-glimpse(dat_raw)  # sanity check
+glimpse(dat_raw)
 ```
 
 ```{r required-columns}
@@ -196,7 +206,20 @@ required_cols <- c(
   "codebook",
   "software_mentioned",
   "preregistered_rules",
-  "coding_scheme_independent_mentioned"
+  "coding_scheme_independent_mentioned",
+  "disagreement_resolved_mentioned",
+  "mean_overlap_nr",
+  "min_overlap_nr",
+  "max_overlap_nr",
+  "length_correlation_noted",
+  "correlation_lengthxmeanoverlap_type",
+  "heterogeneity_emphasized",
+  "overlap_reported",
+  "noninterchangeability_emphasized",
+  "recommend_careful_measure_selection",
+  "recommend_measure_development",
+  "ica_methods_problems",
+  "matrix_source"
 )
 
 missing_required <- setdiff(required_cols, names(dat_raw))
@@ -259,7 +282,13 @@ logical_cols <- c(
   "mean_overlap",
   "min_overlap",
   "max_overlap",
-  "length_correlation_noted"
+  "length_correlation_noted",
+  "disagreement_resolved_mentioned",
+  "heterogeneity_emphasized",
+  "noninterchangeability_emphasized",
+  "recommend_careful_measure_selection",
+  "recommend_measure_development",
+  "ica_methods_problems"
 )
 
 logical_cols_present <- intersect(logical_cols, names(dat_raw))
@@ -326,7 +355,9 @@ tab_overarching_domain <- dat_text %>%
 
 tab_administration_mode <- dat_text %>%
   count(administration_mode, name = "n") %>%
-  mutate(percent = scales::percent(n / sum(n), accuracy = 0.1)) %>%
+  mutate(
+   `Proportion (n/N)` = paste0(n, "/", sum(n)),
+    Percent = scales::percent(n / sum(n), accuracy = 0.1)) %>%
   arrange(desc(n))
 
 tab_population
@@ -620,7 +651,7 @@ reduction_summary
 reduction_by_unit_token
 ```
 
-## Step 7d: Plot the two most common unit types
+## Step 7d: Plotting the two most common unit types
 
 ```{r reduction-plot}
 plot_reduction <- analysis_long %>%
@@ -631,6 +662,10 @@ plot_reduction <- analysis_long %>%
 fig_reduction_by_unit <- ggplot(plot_reduction, aes(x = unit_token, y = percentage_reduction_num)) +
   geom_boxplot(outlier.shape = NA) +
   geom_jitter(width = 0.15, height = 0, alpha = 0.7) +
+  scale_x_discrete(labels = c(
+    symptom_level = "Symptom level",
+    category_level = "Category level"
+  )) +
   labs(x = NULL, y = "Percentage reduction") +
   theme_minimal(base_size = 12)
 
@@ -741,9 +776,9 @@ tab_transformations
 
 This section summarizes the currently extracted coding-workflow variables and the additional reproducibility indicators already in the dataset.
 
-## Step 10a: Coding team and rater descriptives
+## Step 10a: Coding-team summary values
 
-```{r coding-team-descriptives}
+```{r} 
 coding_team_summary <- tibble(
   Indicator = "Coding team reported",
   n = sum(dat_logical$coding_team_reported == TRUE, na.rm = TRUE),
@@ -774,6 +809,9 @@ blinded_summary
 initial_team_summary
 n_rater_summary
 
+tab_coding_desc <- bind_rows(rater_expertise_summary, blinded_summary)
+tab_coding_desc
+
 team_size_table <- tibble::tibble(
   metric = c("Initial coding team size", "Number of raters"),
   n = c(initial_team_summary$n, n_rater_summary$n),
@@ -790,7 +828,10 @@ team_size_table <- tibble::tibble(
   )
 
 team_size_table
+```
 
+## Step 10b: Coding-team distributions
+```{r coding-team-distributions}
 initial_team_size_dist <- dat_num %>%
   filter(!is.na(initial_coding_team_size)) %>%
   count(initial_coding_team_size, name = "n") %>%
@@ -842,8 +883,13 @@ team_expansion_binary <- coding_team_expansion %>%
   )
 
 team_expansion_binary
+```
 
-# Combine the two distributions for plotting
+## Step 10c: Coding-team figures
+
+```{r coding-team-figure}
+
+# Combining the two distributions for plotting
 team_size_plot <- bind_rows(
   initial_team_size_dist %>%
     transmute(
@@ -874,7 +920,7 @@ team_expansion_summary <- dat_num %>%
 
 team_expansion_summary
 
-# Step 10x: Faceted bar plot of coding-team distributions -----------------
+#Faceted bar plot of coding-team distributions 
 
 team_dist_plot <- bind_rows(
   initial_team_size_dist %>%
@@ -976,7 +1022,7 @@ team_transition_table <- dat_num %>%
 team_transition_table
 ```
 
-## Step 10b: Additional reproducibility indicators
+## Step 10d: Additional reliability indicators
 
 ```{r reliability-indicators}
 reliability_table <- tibble(
@@ -1008,7 +1054,7 @@ reliability_table <- tibble(
 reliability_table
 
 ```
-# Step 10c: Reproducibility and documentation
+# Step 10e: Reproducibility and documentation
 
 ```{r documentation-indicators}
 documentation_table <- tibble(
@@ -1068,8 +1114,12 @@ software_used_table <- dat_text %>%
 software_used_table
 
 ```
-```{r}
-# Step 11a: Reporting of overlap outputs ----------------------------------
+
+# Step 11: Reporting
+## Step 11a: Reporting of overlap outputs and length correlation
+
+```{r overlap-outputs}
+
 
 overlap_reporting_table <- tibble::tibble(
   Indicator = c(
@@ -1102,7 +1152,11 @@ overlap_reporting_table <- tibble::tibble(
 
 overlap_reporting_table
 
-# Step 11b: Matrix source -------------------------------------------------
+```
+
+# Step 11b: Matrix source 
+
+```{r matrix source}
 
 matrix_source_table <- dat_text %>%
   count(matrix_source, name = "n (Studies)") %>%
@@ -1132,7 +1186,7 @@ matrix_source_table
 ```
 
 # Step 11c: Numeric descriptives of reported overlap summaries
-```{r}
+```{r numeric-overlap-reporting}
 
 overlap_numeric_summary <- tibble::tibble(
   metric = c("Mean overlap", "Minimum overlap", "Maximum overlap"),
@@ -1167,12 +1221,12 @@ overlap_numeric_summary <- tibble::tibble(
   )
 
 overlap_numeric_summary
+```
 
 
+# Step 11d: Types of length-overlap reporting 
 
-
-# Step 11d: Types of length-overlap reporting -----------------------------
-
+```{r length-overlap-types}
 length_correlation_type_table <- dat_text %>%
   filter(!is.na(correlation_lengthxmeanoverlap_type)) %>%
   count(correlation_lengthxmeanoverlap_type, name = "n (Studies)") %>%
@@ -1188,8 +1242,9 @@ length_correlation_type_table <- dat_text %>%
 length_correlation_type_table
 ```
 
-# Step 12a: Interpretation and recommendation indicators
-```{r}
+# Step 12: Interpretation and reporting
+## Step 12a: Interpretations and recommendations
+```{r interpretations-and-recommendations}
 
 interpretation_indicators_table <- tibble(
   Indicator = c(
@@ -1224,10 +1279,10 @@ interpretation_indicators_table <- tibble(
   select(Indicator, `n (Studies)`, `Proportion (n/N)`, Percent)
 
 interpretation_indicators_table
-
+```
 
 # Step 12b: Reported overlap interpretation 
-
+```{r overlap-text-reported}
 overlap_reported_table <- dat_text %>%
   filter(!is.na(overlap_reported)) %>%
   count(overlap_reported, name = "n (Studies)") %>%
@@ -1259,38 +1314,54 @@ overlap_reported_table
 ```
 
 
-# Step 12: Export outputs
+# Step 13: Export outputs
 
-The main tables are written to the `outputs` folder as CSV files. A Word file is also created for convenience. The style selection for Word is kept defensive because style names can differ across local Word installations.
+The main tables are written to the `outputs` folder as CSV files. A Word file is also created for convenience. 
 
-```{r write-csv-output}
-readr::write_csv(tab_population, file.path(output_dir, "tab_population.csv"))
-readr::write_csv(tab_overarching_domain, file.path(output_dir, "tab_overarching_domain.csv"))
-readr::write_csv(tab_administration_mode, file.path(output_dir, "tab_administration_mode.csv"))
-readr::write_csv(n_scales_full, file.path(output_dir, "n_scales_full.csv"))
-readr::write_csv(n_scales_excluded, file.path(output_dir, "n_scales_excluded.csv"))
-readr::write_csv(search_summary, file.path(output_dir, "search_summary.csv"))
-readr::write_csv(db_usage, file.path(output_dir, "db_usage.csv"))
-readr::write_csv(db_breadth_summary, file.path(output_dir, "db_breadth_summary.csv"))
-readr::write_csv(db_breadth_distribution, file.path(output_dir, "db_breadth_distribution.csv"))
-readr::write_csv(criteria_combo_block, file.path(output_dir, "criteria_combo_block.csv"))
-readr::write_csv(criteria_inclusion_block, file.path(output_dir, "criteria_inclusion_block.csv"))
-readr::write_csv(unit_counts_total_analyses, file.path(output_dir, "unit_counts_total_analyses.csv"))
-readr::write_csv(reduction_summary, file.path(output_dir, "reduction_summary.csv"))
-readr::write_csv(reduction_by_unit_token, file.path(output_dir, "reduction_by_unit_token.csv"))
-readr::write_csv(tab_categorization_approach, file.path(output_dir, "tab_categorization_approach.csv"))
-readr::write_csv(diag_fw_usage, file.path(output_dir, "diag_fw_usage.csv"))
-readr::write_csv(tab_transformations, file.path(output_dir, "tab_transformations.csv"))
-readr::write_csv(initial_team_size_dist, file.path(output_dir, "initial_team_size_dist.csv"))
-readr::write_csv(team_expansion_binary, file.path(output_dir, "team_expansion_binary.csv"))
-readr::write_csv(n_rater_size_dist, file.path(output_dir, "n_rater_size_dist.csv"))
-readr::write_csv(reliability_table, file.path(output_dir, "reliability_indicators.csv"))
+```{r export-csv-tables}
 
+# Tables that are part of the main reproducibility output.
+tables_to_export <- list(
+  tab_population = tab_population,
+  tab_overarching_domain = tab_overarching_domain,
+  tab_administration_mode = tab_administration_mode,
+  n_scales_full = n_scales_full,
+  n_scales_excluded = n_scales_excluded,
+  search_summary = search_summary,
+  db_usage = db_usage,
+  db_breadth_summary = db_breadth_summary,
+  db_breadth_distribution = db_breadth_distribution,
+  criteria_combo_block = criteria_combo_block,
+  criteria_inclusion_block = criteria_inclusion_block,
+  unit_counts_total_analyses = unit_counts_total_analyses,
+  reduction_summary = reduction_summary,
+  reduction_by_unit_token = reduction_by_unit_token,
+  tab_categorization_approach = tab_categorization_approach,
+  diag_fw_usage = diag_fw_usage,
+  tab_transformations = tab_transformations,
+  team_size_table = team_size_table,
+  initial_team_size_dist = initial_team_size_dist,
+  n_rater_size_dist = n_rater_size_dist,
+  team_expansion_binary = team_expansion_binary,
+  reliability_table = reliability_table,
+  documentation_table = documentation_table,
+  software_used_table = software_used_table,
+  overlap_reporting_table = overlap_reporting_table,
+  matrix_source_table = matrix_source_table,
+  overlap_numeric_summary = overlap_numeric_summary,
+  length_correlation_type_table = length_correlation_type_table,
+  interpretation_indicators_table = interpretation_indicators_table,
+  overlap_reported_table = overlap_reported_table
+)
 
-
-
-
-
+# Write each table to CSV.
+purrr::iwalk(
+  tables_to_export,
+  ~ readr::write_csv(
+    .x,
+    file.path(output_dirs$tables_csv, paste0(.y, ".csv"))
+  )
+)
 
 ```
 
@@ -1334,6 +1405,8 @@ doc <- doc %>%
   body_add_par("Scale search and selection transparency", style = heading2_style) %>%
   body_add_flextable(ft_minimal(db_usage, "Reported databases/search sources")) %>% 
   body_add_par("", style = normal_style) %>%
+  body_add_flextable(ft_minimal(db_breadth_distribution, "Number of Databases Used")) %>%
+  body_add_par("", style = normal_style) %>% 
   body_add_flextable(ft_minimal(criteria_combo_block, "Selection criteria format")) %>%
   body_add_par("", style = normal_style) %>%
   body_add_flextable(ft_minimal(criteria_inclusion_block, "Specific inclusion criteria")) %>%
@@ -1358,12 +1431,14 @@ doc <- doc %>%
   body_add_flextable(ft_minimal(n_rater_size_dist, "Rater team distribution")) %>% 
   body_add_par("", style = normal_style) %>%
   body_add_img(
-  src = file.path(output_dir, "team_distribution_plot.png"),
+  src = file.path(output_dirs$figures, "team_distribution_plot.png"),
   width = 6.2,
   height = 5.2
   ) %>%
   body_add_par("", style = normal_style) %>%
   body_add_flextable(ft_minimal(team_expansion_binary, "Coding team expansion")) %>%
+  body_add_par("", style = normal_style) %>%
+  body_add_flextable(ft_minimal(tab_coding_desc, "Additional Coding Descriptives")) %>%
   body_add_par("", style = normal_style) %>%
   body_add_flextable(ft_minimal(reliability_table, "Coding reliability indicators")) %>% 
   body_add_flextable(ft_minimal(documentation_table, "Documentation indicators")) %>%
@@ -1374,6 +1449,8 @@ doc <- doc %>%
   body_add_par("", style = normal_style) %>% 
   body_add_flextable(ft_minimal(matrix_source_table, "Location of overlap matrix")) %>%
   body_add_par("", style = normal_style) %>% 
+  body_add_flextable(ft_minimal(overlap_numeric_summary, "Summary of Overlap Values")) %>%
+  body_add_par("", style = normal_style) %>% 
   body_add_flextable(ft_minimal(length_correlation_type_table, "Types of reported length correlations")) %>%
   body_add_par("", style = normal_style) %>% 
   body_add_flextable(ft_minimal(interpretation_indicators_table, "Interpretive claims and recommendations")) %>%
@@ -1383,7 +1460,10 @@ doc <- doc %>%
   
   
 
-print(doc, target = file.path(output_dir, "tables_methods_synthesis_simpler.docx"))
+print(
+  doc,
+  target = file.path(output_dirs$tables_docx, "tables_methods_synthesis_simpler.docx")
+)
 ```
 
 # Step 12: Notes for later extension
