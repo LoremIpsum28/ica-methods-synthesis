@@ -1,0 +1,3 @@
+The "coding_second_rater" file is the majority of values that the second rater coded (an initial set of 50 spot checks was done in a different document with just a limited selection of columns). 
+
+The "IRR coding file" is the file used to code the variables. The first sheet is empty with just the IDs and categories. Most columns are restricted to a fixed set of values to choose from and are connected to the second sheet. The second sheet contains the full codebook with an Explanation on how to code the variable and all answer Options. For the cells where multiple entries were necessary or numbers had to be entered, the entry was unrestricted. Because of this Variation for some cells, the IRR calculation was not automated and instead done manually.
