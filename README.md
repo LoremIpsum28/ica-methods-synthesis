@@ -12,7 +12,7 @@ Tim Schneeberger
 
 ## Folder Structure
 
-`/code` contains the R scripts and R Markdown files used for data processing, descriptive analyses, figures, tables, and supplementary outputs.
+`/code` contains the R scripts and R Markdown files used for data processing, descriptive analyses, figures, tables, and supplementary outputs. The 00_prepare_ica_methods.R code was not originally part of the pipeline and was later added for clarity of workflow.
 
 `/data/raw` contains the manually assembled and minimally processed source materials for the project. ica_extraction_master_with_notes is the original data-extraction sheet and includes all notes and context. 
 ica_extraction_analysis_columns has the same content but with all notes_columns removed. 
