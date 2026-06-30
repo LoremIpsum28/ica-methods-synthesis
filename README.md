@@ -24,7 +24,7 @@ Tim Schneeberger
   `/figures` for final figures 
   `/tables` contains a `/csv` with individual .csv table outputs and a `/docx`for a compact word table compendium
 
-`/supplementary-materials` contains files with supplementary materials, including supplementary tables and a knitted HTML version of the code for readability.
+`/supplementary_materials` contains files with supplementary materials, including supplementary tables and a knitted HTML version of the code for readability.
 
 
 
@@ -33,18 +33,17 @@ Tim Schneeberger
 
 The main analysis is contained in code/01_methods_descriptives.Rmd. This file reads the cleaned analysis dataset from data/processed/ica_methods.csv and reproduces the descriptive analyses, tables, figures, and supplementary output files.
 
-* Start with the files in /methods to understand the extraction framework and coding rules.
+* Start with the files in `/method` to understand the extraction framework and coding rules.
 
 * The second step would be to retrieve and code the articles (full list with citation in `/supplementary_materials/supplementary_tables`), for this use the codebook in /methods (instructions for the coding in the same folder as a .pdf). 
       If you only want to use the code, skip this step
       
 * To run the analysis, knit or run code/01_methods_descriptives.Rmd.
 
-* The regenerated outputs are written to:
-
-  *outputs/tables/csv/ for machine-readable table outputs
-  *outputs/tables/docx/ for the Word table compendium
-  *outputs/figures/ for final figures
+* The regenerated outputs are written to: 
+*   outputs/tables/csv/ for machine-readable table outputs,
+*   outputs/tables/docx/ for the Word table compendium,
+*   outputs/figures/ for final figures
   
 
 
